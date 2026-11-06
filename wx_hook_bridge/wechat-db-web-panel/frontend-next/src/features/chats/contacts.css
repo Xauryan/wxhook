@@ -1,0 +1,579 @@
+.contacts-window {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--wx-canvas);
+}
+.contacts-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 260px;
+  width: 260px;
+  min-width: 0;
+  min-height: 0;
+  background: var(--wx-list);
+  border-right: 1px solid var(--border);
+}
+.contacts-search-row {
+  display: flex;
+  padding: 22px 16px 14px;
+}
+.contacts-search-row .session-search {
+  height: 34px;
+}
+.contacts-search-row input {
+  font-size: 14px;
+}
+.contacts-manage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 46px;
+  margin: 0 16px 12px;
+  padding: 8px;
+  border-radius: 5px;
+  background: var(--background);
+  font-size: 15px;
+  cursor: pointer;
+}
+.contacts-section-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 18px;
+  text-align: left;
+  font-size: 15px;
+  cursor: pointer;
+}
+.contacts-section-toggle > span {
+  margin-left: auto;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.contacts-list-area {
+  display: flex;
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+.contacts-list {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.contact-letter {
+  padding: 12px 24px 7px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  scroll-margin-top: 8px;
+}
+.contact-list-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 68px;
+  padding: 12px 22px;
+  cursor: pointer;
+  text-align: left;
+}
+.contact-list-item > .wechat-avatar {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 5px;
+}
+.contact-list-item > span:not(.wechat-avatar) {
+  min-width: 0;
+  font-size: 15px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.contact-list-item > small {
+  color: var(--muted-foreground);
+  font-size: 11px;
+  flex-shrink: 0;
+}
+.contact-list-item:hover,
+.contacts-section-toggle:hover,
+.contacts-manage:hover {
+  background: var(--wx-hover);
+}
+.contact-list-item.selected,
+.contacts-section-toggle.selected,
+.contacts-manage.selected {
+  background: var(--wx-selected);
+}
+.contact-letter-index {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  gap: 2px;
+  overflow: auto;
+}
+.contact-letter-index button {
+  width: 24px;
+  min-height: 24px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  cursor: pointer;
+  border-radius: 3px;
+}
+.contact-letter-index button:hover {
+  color: var(--wx-green);
+  background: var(--background);
+}
+.contacts-sync {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  padding: 5px 14px;
+  font-size: 10px;
+  color: var(--muted-foreground);
+  border-top: 1px solid var(--border);
+}
+.contacts-sync button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+}
+.contacts-empty-list {
+  padding: 24px 18px;
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.contacts-content {
+  flex: 1;
+  min-width: 0;
+  overflow: auto;
+  background: var(--wx-canvas);
+  overscroll-behavior: contain;
+}
+.contacts-content-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 4px 20px;
+  min-height: 44px;
+  gap: 10px;
+}
+.contacts-content-toolbar p,
+.contacts-error {
+  font-size: 12px;
+  color: var(--muted-foreground);
+  padding: 10px 20px;
+}
+.contacts-error {
+  color: var(--destructive);
+}
+.contacts-back {
+  display: none;
+}
+.contacts-blank {
+  min-height: calc(100% - 44px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 15px;
+  color: var(--muted-foreground);
+  padding: 25px;
+}
+.contacts-blank svg {
+  opacity: 0.35;
+}
+.contacts-blank h2 {
+  font-size: 18px;
+  font-weight: 500;
+}
+.contacts-blank p {
+  font-size: 13px;
+}
+.contact-profile {
+  width: min(470px, calc(100% - 64px));
+  margin: clamp(20px, 5vh, 70px) auto 48px;
+}
+.contact-profile-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 20px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--border);
+}
+.contact-profile-header > .wechat-avatar {
+  flex-shrink: 0;
+  width: 76px;
+  height: 76px;
+  border-radius: 6px;
+}
+.contact-profile-identity {
+  min-width: 0;
+  flex: 1;
+}
+.contact-profile-identity h2 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  font-size: 24px;
+  font-weight: 500;
+  line-height: 1.4;
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+.contact-profile-identity p {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--muted-foreground);
+  overflow-wrap: anywhere;
+}
+.contact-profile-identity small {
+  color: var(--muted-foreground);
+}
+.contact-gender {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+.contact-gender.female {
+  color: #e35e76;
+}
+.contact-gender.male {
+  color: #4b87ce;
+}
+.contact-more {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  min-height: 36px;
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+  cursor: pointer;
+}
+.contact-profile-section {
+  padding: 24px 0;
+  border-bottom: 1px solid var(--border);
+}
+.contact-profile-section h3 {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  margin-bottom: 12px;
+}
+.contact-profile-section dl {
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  gap: 12px 18px;
+  font-size: 15px;
+  line-height: 1.65;
+}
+.contact-profile-section dt {
+  color: var(--muted-foreground);
+}
+.contact-profile-section dd {
+  min-width: 0;
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.contact-unavailable {
+  color: var(--muted-foreground);
+  font-size: 13px;
+}
+.contact-edit-link,
+.contact-group-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+  cursor: pointer;
+  text-align: left;
+}
+.contact-edit-link:hover,
+.contact-group-toggle:hover {
+  color: var(--wx-green);
+}
+.contact-edit-link:disabled,
+.contact-group-toggle:disabled {
+  cursor: default;
+  color: inherit;
+}
+.contact-common-groups {
+  display: grid;
+  gap: 4px;
+  margin: 16px 0 0 108px;
+}
+.contact-common-groups button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  min-height: 44px;
+  padding: 6px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.contact-common-groups button:hover {
+  background: var(--wx-hover);
+}
+.contact-common-groups span {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.contact-common-groups svg {
+  flex-shrink: 0;
+  color: var(--muted-foreground);
+}
+.contact-profile-actions {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding-top: 30px;
+}
+.contact-profile-actions button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  min-width: 86px;
+  min-height: 74px;
+  font-size: 14px;
+  color: #355b93;
+  cursor: pointer;
+}
+.contact-profile-actions svg {
+  width: 24px;
+  height: 24px;
+  stroke-width: 1.5;
+}
+.contact-profile-actions button:disabled {
+  color: var(--muted-foreground);
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+.contact-profile-actions small {
+  font-size: 10px;
+}
+.contacts-management,
+.contacts-new-friends {
+  padding: 24px clamp(16px, 4vw, 48px) 40px;
+}
+.contacts-management > h2,
+.contacts-new-friends > h2 {
+  font-size: 23px;
+  font-weight: 500;
+  margin-bottom: 12px;
+}
+.contacts-management > p,
+.contacts-new-friends > p {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 1.7;
+  margin-bottom: 22px;
+}
+.contacts-management-scroll {
+  overflow: auto;
+  width: 100%;
+  margin-bottom: 14px;
+}
+.contacts-management table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+  text-align: left;
+}
+.contacts-management th {
+  font-weight: 400;
+  color: var(--muted-foreground);
+  padding: 14px 10px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.contacts-management td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--border);
+  overflow-wrap: anywhere;
+  max-width: 200px;
+  min-width: 80px;
+}
+.management-contact-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  text-align: left;
+  min-width: 140px;
+}
+.management-contact-name .wechat-avatar {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+}
+.contacts-new-friends article {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.contacts-new-friends article > .wechat-avatar {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+.contacts-new-friends article > div {
+  flex: 1;
+  min-width: 0;
+}
+.contacts-new-friends article p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted-foreground);
+  font-size: 13px;
+  margin: 5px 0;
+}
+.contacts-new-friends article time,
+.contacts-new-friends article > span {
+  color: var(--muted-foreground);
+  font-size: 11px;
+}
+.contacts-new-friends article button {
+  color: #355b93;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 8px;
+}
+.contact-remark-dialog form {
+  display: grid;
+  gap: 10px;
+}
+.contact-remark-dialog label {
+  font-size: 14px;
+}
+.contact-remark-dialog small {
+  font-size: 12px;
+  color: var(--muted-foreground);
+}
+.contact-remark-dialog p[role] {
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--destructive);
+}
+.contact-remark-dialog p.contact-confirmed {
+  color: var(--wx-green);
+}
+.contact-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 12px;
+}
+.contacts-window button:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+@container content (max-width: 760px) {
+  .contacts-panel {
+    width: 230px;
+    flex-basis: 230px;
+  }
+  .contact-profile {
+    width: calc(100% - 36px);
+  }
+  .contact-profile-header {
+    gap: 12px;
+  }
+  .contact-profile-header > .wechat-avatar {
+    width: 60px;
+    height: 60px;
+  }
+  .contact-profile-actions {
+    gap: 8px;
+  }
+  .contact-profile-section dl {
+    grid-template-columns: 74px minmax(0, 1fr);
+    gap: 10px;
+    font-size: 14px;
+  }
+  .contact-common-groups {
+    margin-left: 84px;
+  }
+}
+@container content (max-width: 640px) {
+  .contacts-panel {
+    width: 100%;
+    flex: 1;
+    border: 0;
+  }
+  .contacts-content-empty,
+  .has-contact-selection .contacts-panel,
+  .chat-page:has(.has-contact-selection) .chat-navigation {
+    display: none;
+  }
+  .contacts-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .contacts-content-toolbar {
+    padding: 4px 12px;
+  }
+  .contact-profile {
+    margin-top: 18px;
+  }
+}
+@media (max-width: 767px) {
+  .contacts-panel {
+    width: 100%;
+    flex: 1;
+    border: 0;
+  }
+  .contacts-content-empty,
+  .has-contact-selection .contacts-panel,
+  .chat-page:has(.has-contact-selection) .chat-navigation {
+    display: none;
+  }
+  .contacts-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .contact-profile {
+    width: calc(100% - 36px);
+    margin-top: 12px;
+  }
+  .contact-profile-identity h2 {
+    font-size: 22px;
+  }
+  .contact-profile-actions {
+    gap: 8px;
+  }
+  .contacts-search-row input {
+    font-size: 16px;
+  }
+}

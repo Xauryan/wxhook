@@ -1,0 +1,10 @@
+
+ RUN  v4.1.4 D:/苏世奇的ai探索/jqr/wx_hook_bridge/wechat-db-web-panel/frontend-next
+
+···················································································································································
+
+ Test Files  24 passed (24)
+      Tests  147 passed (147)
+   Start at  09:14:18
+   Duration  18.94s (transform 0ms, setup 0ms, import 3.31s, tests 11.47s, environment 0ms)
+

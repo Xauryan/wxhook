@@ -1,0 +1,10 @@
+# 排除：依赖 / 聊天分析数据库 / 自动生成的测试截图（文件名超 Windows 路径上限）
+node_modules/
+.cache/
+__screenshots__/
+wx_hook_bridge/wechat-db-web-panel/frontend-next/dist-task-center/
+
+# Local run output and Python caches stay out of the public repository
+wx_hook_bridge/wechat-db-web-panel/artifacts/
+__pycache__/
+*.pyc

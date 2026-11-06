@@ -1,0 +1,32 @@
+import { expect, test } from "@playwright/test";
+
+test("delivery management has independent group selection without sending", async ({ page }) => {
+  await page.goto("/delivery-management");
+  await expect(page.getByRole("heading", { name: "配送管理", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "意向单通知", exact: true })).toBeVisible();
+  await expect(page.getByText("配送群推送设置", { exact: true })).toBeVisible();
+  await expect(page.getByRole("searchbox", { name: "搜索目标微信群" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "保存配送推送设置" })).toBeVisible();
+  await expect(page.getByText("微信群预览", { exact: true })).toBeVisible();
+  await page.getByLabel("统计日期（北京时间）").fill("2026-09-19");
+  await expect(page.getByText("每日跟进统计", { exact: true })).toBeVisible({ timeout: 45000 });
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.locator(".delivery-table").first().locator("tbody tr")).not.toHaveCount(0);
+  await page.getByRole("button", { name: "配送统计", exact: true }).click();
+  await expect(page.getByLabel("微信群消息内容")).toContainText("【配送跟进统计｜2026-09-19】");
+  await page.getByRole("button", { name: "电话通知", exact: true }).click();
+  await expect(page.getByLabel("微信群消息内容")).toContainText("【配送联系通知】");
+  await page.screenshot({ path: "../artifacts/delivery-push-settings-desktop.png" });
+  await page.screenshot({ path: "../artifacts/delivery-management-desktop.png", fullPage: true });
+  await page.getByRole("button", { name: "无法配送 / 未成交", exact: true }).click();
+  await expect(page.getByRole("button", { name: "查看录音文字" }).first()).toBeVisible({ timeout: 45000 });
+  await page.getByRole("button", { name: "查看录音文字" }).first().click();
+  await expect(page.getByRole("button", { name: "关闭证据" })).toBeVisible();
+  await expect(page.getByText("读取证据中…")).toHaveCount(0, { timeout: 45000 });
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.screenshot({ path: "../artifacts/delivery-push-settings-mobile.png" });
+  await page.screenshot({ path: "../artifacts/delivery-management-mobile.png", fullPage: true });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+});

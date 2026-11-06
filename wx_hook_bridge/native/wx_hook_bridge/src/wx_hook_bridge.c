@@ -1,0 +1,42 @@
+/*
+ * wx_hook_bridge.c
+ *
+ * Native bridge entry translation unit.
+ * Runtime domains live in src/modules and are linked as real objects.
+ */
+
+#include "include/wx_bridge_platform.h"
+#include "include/wx_bridge_memory.h"
+#include "include/wx_bridge_file_io.h"
+#include "include/wx_bridge_text.h"
+#include "include/wx_bridge_protocol.h"
+#include "include/wx_bridge_offsets.h"
+#include "include/wx_bridge_paths.h"
+#include "include/wx_bridge_send_runtime.h"
+#include "include/wx_bridge_wechat_string.h"
+#include "include/wx_bridge_contact_lookup.h"
+#include "include/wx_bridge_revoke_protocol.h"
+#include "include/wx_bridge_debug_log.h"
+#include "include/wx_bridge_forward_protocol.h"
+#include "include/wx_bridge_hongbao_status.h"
+#include "include/wx_bridge_anti_revoke.h"
+#include "include/wx_bridge_worker_control.h"
+#include "include/wx_bridge_media_ops.h"
+#include "include/wx_bridge_room_contacts.h"
+#include "include/wx_bridge_send_api.h"
+#include "include/wx_bridge_forward_builders.h"
+#include "include/wx_bridge_forward_retained.h"
+#include "include/wx_bridge_forward_send.h"
+#include "include/wx_bridge_forward_hooks.h"
+#include "include/wx_bridge_friend_accept.h"
+#include "include/wx_bridge_revoke_cache.h"
+#include "include/wx_bridge_revoke_forward.h"
+#include "include/wx_bridge_revoke_hooks.h"
+#include "include/wx_bridge_hongbao_hooks.h"
+#include "include/wx_bridge_hongbao_trace.h"
+#include "include/wx_bridge_hongbao_noclick.h"
+#include "include/wx_bridge_receive_hooks.h"
+#include "include/wx_bridge_outbox_dispatch.h"
+#include "include/wx_bridge_http_server.h"
+#include "include/wx_bridge_http_api.h"
+#include "include/wx_bridge_account_info.h"

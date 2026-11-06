@@ -1,0 +1,15 @@
+**
+!deploy/
+deploy/**
+!deploy/Dockerfile
+!deploy/nginx.conf
+!frontend-next/
+frontend-next/**
+!frontend-next/dist/
+!frontend-next/dist/**
+!frontend-next/LICENSE
+**/node_modules/**
+**/.git/**
+**/.env*
+**/.cache/**
+**/artifacts/**

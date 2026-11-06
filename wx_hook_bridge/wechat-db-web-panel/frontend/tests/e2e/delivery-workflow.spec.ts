@@ -1,0 +1,31 @@
+import { expect, test } from "@playwright/test";
+
+test("reads the real dual-party report, history and reminders without mutations", async ({ page }) => {
+  test.setTimeout(120000);
+  const writes: string[] = [];
+  page.on("request", request => { if (request.method() === "POST" && request.url().includes("/delivery-management/")) writes.push(request.url()); });
+  await page.goto("/delivery-management");
+  await page.getByText("定时与提醒", { exact: true }).click();
+  await expect(page.getByLabel("定时阶段报表", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("超时待办提醒", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("AI 复盘完成通知", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "异常处理", exact: true }).click();
+  const acceptanceCase=page.locator('tbody tr').filter({hasText:'#10648'}).getByRole('button',{name:'处理 / 复盘'});
+  await expect(acceptanceCase).toBeVisible({ timeout: 60000 });
+  await acceptanceCase.click();
+  await expect(page.getByRole("heading", { name: "双侧录音复盘" })).toBeVisible({ timeout: 60000 });
+  await expect(page.getByText("待人工复核", { exact: true })).toBeVisible();
+  await page.locator(".delivery-analysis-result summary").first().click();
+  await expect(page.locator(".delivery-analysis-result blockquote").first()).toBeVisible();
+  await page.screenshot({ path: "../artifacts/delivery-workflow-desktop.png" });
+  await page.getByText("分配 / 转派历史", { exact: true }).click();
+  await expect(page.getByText(/上线观察基线/).first()).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.locator(".delivery-analysis-result").scrollIntoViewIfNeeded();
+  await page.screenshot({ path: "../artifacts/delivery-workflow-mobile.png" });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy();
+  const alertsResponse=page.waitForResponse(response => response.url().includes('/api/delivery-management/alerts?'),{timeout:60000});
+  await page.getByRole("button", { name: "超时待办", exact: true }).click();
+  expect((await alertsResponse).status()).toBe(200);
+  expect(writes).toEqual([]);
+});

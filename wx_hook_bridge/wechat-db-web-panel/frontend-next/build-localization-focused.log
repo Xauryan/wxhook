@@ -1,0 +1,11 @@
+
+ RUN  v4.1.4 D:/苏世奇的ai探索/jqr/wx_hook_bridge/wechat-db-web-panel/frontend-next
+
+09:03:10 [vite] (client) Re-optimizing dependencies because vite config has changed
+·········································
+
+ Test Files  5 passed (5)
+      Tests  41 passed (41)
+   Start at  09:03:09
+   Duration  7.67s (transform 0ms, setup 0ms, import 765ms, tests 4.59s, environment 0ms)
+

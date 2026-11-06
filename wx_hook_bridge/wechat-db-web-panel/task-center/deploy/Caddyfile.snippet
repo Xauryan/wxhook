@@ -1,0 +1,11 @@
+jqr.47jsy.com {
+    header {
+        X-Content-Type-Options nosniff
+        X-Frame-Options SAMEORIGIN
+        Referrer-Policy no-referrer
+        -Server
+    }
+    reverse_proxy 127.0.0.1:18995 {
+        flush_interval -1
+    }
+}

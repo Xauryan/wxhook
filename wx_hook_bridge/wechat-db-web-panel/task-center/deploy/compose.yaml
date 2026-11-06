@@ -1,0 +1,70 @@
+name: jqr-task-center
+services:
+  db:
+    image: postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea
+    environment:
+      POSTGRES_DB: task_center
+      POSTGRES_USER: task_center
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?required}
+    volumes:
+      - task-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U task_center -d task_center"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+  api:
+    image: jqr-task-center-api:${RELEASE:?required}
+    build:
+      context: ../backend
+      dockerfile: deploy/Dockerfile
+    environment:
+      TASK_CENTER_DATABASE_URL: postgresql+psycopg://task_center:${DB_PASSWORD}@db:5432/task_center
+      TASK_CENTER_PUBLIC_URL: https://jqr.47jsy.com
+    depends_on:
+      db:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8795/readyz', headers={'Host':'jqr.47jsy.com'}), timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    logging: *logging
+  web:
+    image: nginx:stable-alpine@sha256:0985e772fb9f729e6fa0980da05fca5d9c468e870eed43071545afa9d2e27d94
+    user: "101:101"
+    entrypoint: []
+    command: [nginx, -g, "daemon off;"]
+    ports:
+      - 127.0.0.1:18995:8080
+    volumes:
+      - ../frontend:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+    healthcheck:
+      test: [CMD-SHELL, "wget -q -O /dev/null http://127.0.0.1:8080/healthz"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+    logging: *logging
+volumes:
+  task-data:
+    name: jqr-task-center-data

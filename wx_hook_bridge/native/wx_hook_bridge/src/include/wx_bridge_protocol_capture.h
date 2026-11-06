@@ -1,0 +1,16 @@
+#ifndef WX_BRIDGE_PROTOCOL_CAPTURE_H
+#define WX_BRIDGE_PROTOCOL_CAPTURE_H
+
+#include "wx_bridge_platform.h"
+
+void wxb_refresh_protocol_capture_hook(void);
+void wxb_uninstall_protocol_capture_hook(void);
+int wxb_protocol_capture_hook_installed(void);
+int wxb_protocol_capture_offsets_valid(void);
+
+#define refresh_protocol_capture_hook wxb_refresh_protocol_capture_hook
+#define uninstall_protocol_capture_hook wxb_uninstall_protocol_capture_hook
+#define protocol_capture_hook_installed wxb_protocol_capture_hook_installed
+#define protocol_capture_offsets_valid wxb_protocol_capture_offsets_valid
+
+#endif /* WX_BRIDGE_PROTOCOL_CAPTURE_H */

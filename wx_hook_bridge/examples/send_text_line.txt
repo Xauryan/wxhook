@@ -1,0 +1,8 @@
+# Example outbox line (copy ONE line into bridge/outbox/next.txt).
+# Fields are TAB-separated:
+#   seq    type    to_wxid    content
+# type 1 = send_text
+#
+# Replace the numbers/ids before use. Do not keep this comment block in next.txt.
+
+1710000000000	1	filehelper	hello from wx_hook_bridge

@@ -1,0 +1,13 @@
+:root{--ink:#203b33;--muted:#5f6d65;--green:#176b50;--red:#a34e3c;--line:#dce3dc;--soft:#eff4ec}
+*{box-sizing:border-box}body{margin:0;background:white;color:var(--ink);font-family:ReportSans,sans-serif;font-synthesis:none}
+.report{width:720px;padding:30px 32px 26px;border-top:7px solid var(--green)}
+header{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:22px}h1{font-size:38px;line-height:1.4;margin:0;font-weight:700}.order{font-size:29px;font-weight:700;color:var(--green)}
+.customer{display:flex;align-items:baseline;justify-content:space-between;gap:16px;font-size:30px;margin-bottom:12px}.customer b{overflow-wrap:anywhere}.tail{font-size:25px;color:var(--muted);white-space:nowrap}
+.agent{font-size:27px;margin-bottom:14px;color:var(--muted);overflow-wrap:anywhere}.times{font-size:27px;line-height:1.7;overflow-wrap:anywhere}.label{color:var(--muted);margin-right:17px}
+.call-state{font-size:27px;display:flex;justify-content:space-between;padding-top:11px;margin-bottom:26px}.call-state b{font-weight:700;color:var(--green)}
+.section-head{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:19px 0 16px;border-top:2px solid var(--ink)}h2{font-size:30px;margin:0;font-weight:700;overflow-wrap:anywhere}.month{font-size:23px;color:var(--muted);white-space:nowrap}
+table{width:100%;border-collapse:collapse;table-layout:fixed;font-variant-numeric:tabular-nums}col:first-child{width:36%}col{width:32%}thead{background:var(--soft)}
+th,td{text-align:right;padding:12px 17px;border-bottom:1px solid var(--line);overflow-wrap:anywhere}th:first-child,td:first-child{text-align:left}
+thead th{font-size:26px;font-weight:400;color:var(--muted);padding-top:16px;padding-bottom:16px}tbody th{font-weight:400;font-size:28px}tbody td{font-size:34px;line-height:1.35}
+tr.total th,tr.total td{font-weight:700}tr.success td{color:var(--green)}tr.failed td{color:var(--red)}tr.rate{background:var(--soft)}tr.rate th{font-weight:700}tr.rate td{font-size:37px;font-weight:700;color:var(--green)}tr.rate>*{border-bottom:0;padding-top:16px;padding-bottom:16px}
+.note{font-size:23px;color:var(--muted);padding-top:15px;line-height:1.5}.foot{margin-top:19px;padding-top:14px;border-top:1px solid var(--line);font-size:22px;color:var(--muted);line-height:1.65}.stamp{font-size:21px;margin-top:3px}

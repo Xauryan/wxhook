@@ -1,0 +1,50 @@
+
+*{box-sizing:border-box}
+body{margin:0;background:#edf2ef;color:#19392f;font-family:"Microsoft YaHei UI","Microsoft YaHei",sans-serif}
+.report{width:980px;margin:0;background:#fbfcfa;padding:44px 42px 34px;border-top:10px solid #174d40}
+.topline{display:flex;justify-content:space-between;align-items:center;color:#547165;font-size:25px;margin-bottom:14px;letter-spacing:1px}
+.preview{font-size:22px;letter-spacing:0;color:#61746b;background:#edf2ee;border-radius:7px;padding:5px 12px}
+header{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:23px}
+h1{font-size:47px;letter-spacing:1px;font-weight:700;margin:0;line-height:1.25}
+.time{font-family:"Bahnschrift","Microsoft YaHei",sans-serif;font-size:58px;line-height:1;font-weight:600;color:#174d40;font-variant-numeric:tabular-nums}
+.period{display:flex;align-items:center;justify-content:space-between;font-size:27px;color:#547165;padding:18px 0 27px;border-bottom:1px solid #dbe5dd}
+.period strong{font-weight:600;color:#25483a}
+.kpis{display:grid;grid-template-columns:1fr 1fr 1fr;margin:30px 0 34px;gap:16px}
+.kpi{background:#edf3ee;border-radius:13px;padding:22px 24px 19px}
+.kpi.primary{background:#174d40;color:#fff}
+.kpi .label{font-size:27px;white-space:nowrap}
+.value{font-family:"Bahnschrift","Microsoft YaHei",sans-serif;font-size:72px;font-weight:600;line-height:1.2;letter-spacing:-1px;font-variant-numeric:tabular-nums;margin-top:7px}
+.value small{font-size:29px;letter-spacing:0;font-weight:400;margin-left:6px}
+.value .denominator{font-size:38px;opacity:.7;font-weight:400;letter-spacing:0}
+.sub{font-size:23px;color:#61766b;margin-top:2px}
+.primary .sub{color:#d8e7df}
+.section-title{display:flex;justify-content:space-between;align-items:center;margin:0 0 17px}
+h2{font-size:32px;font-weight:700;margin:0}
+.section-title span{color:#738279;font-size:24px}
+.table-wrap{border:1px solid #dce5de;border-radius:15px;overflow:hidden;background:#fff}
+table{border-collapse:collapse;table-layout:fixed;width:100%;font-variant-numeric:tabular-nums}
+col.name{width:190px}
+thead th{font-weight:500;font-size:28px;background:#f0f4f0;padding:16px 0;color:#496254}
+thead tr:first-child th{font-size:30px;font-weight:700;padding:18px 0 11px}
+thead tr:first-child th[rowspan]{text-align:left;padding-left:25px;color:#395548;font-weight:500}
+thead tr:last-child th{font-size:26px;padding-top:7px;padding-bottom:18px}
+thead .stage{background:#e5f0e8;color:#246045}
+.stage-start{border-left:1px solid #d6e2d9}
+tbody tr{border-top:1px solid #e5ebe5}
+tbody th{text-align:left;font-size:33px;font-weight:500;padding:25px 0 25px 25px;white-space:nowrap}
+tbody td{text-align:center;font-family:"Bahnschrift","Microsoft YaHei",sans-serif;font-size:38px;font-weight:400;padding:20px 0;color:#345246;line-height:1.15}
+tbody td.dial{font-size:42px;font-weight:600;color:#193e2e}
+tbody td.stage{background:#f1f7f1}
+tbody td.stage.active{color:#19683d;font-weight:600}
+tbody td.stage.zero{color:#8f9e93;font-weight:400;font-size:33px}
+.zero-panel{margin-top:30px;border:1px solid #e0e6df;border-radius:14px;padding:22px 25px 24px;background:#f3f5f1}
+.zero-head{display:flex;align-items:center;justify-content:space-between}
+.zero-head h2{font-size:29px;font-weight:600;color:#4a5d4f}
+.zero-head span{font-size:26px;color:#65786a}
+.names{display:grid;grid-template-columns:repeat(3,1fr);gap:15px 30px;margin-top:19px;color:#526258;font-size:29px}
+.zero-note{margin-top:18px;font-size:24px;color:#6d7f71}
+footer{font-size:26px;color:#637469;line-height:1.65;margin-top:24px;padding:0 3px}
+footer b{font-weight:500;color:#435d4b}
+
+.value.missing{font-size:50px}.empty{padding:30px;font-size:29px;color:#61766b}.missing-note{font-size:26px;color:#8b6030;margin-top:18px}
+.report tbody th{white-space:normal;overflow-wrap:anywhere;padding-right:12px}.names span{min-width:0;overflow-wrap:anywhere}
