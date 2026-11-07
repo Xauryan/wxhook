@@ -14,7 +14,16 @@ from .models import AnswerDraft, AnswerReview, QueryPlan
 PIPELINE_VERSION = 'group-qa-4'
 from .prompts import DECISION_CHOICES, DECISION_PROMPT, PLAN_PROMPT, ANSWER_PROMPT, REVIEW_PROMPT, PROMPTS
 
+# What each strictness level tells the answer and review stages, and the confidence it requires.
+POLICIES = {
+    'strict': ('严格：只采信官方原文和专业资料站原文，搜索摘录、攻略站转述不能单独作为依据。', None),
+    'balanced': ('平衡：可以采用专业攻略站、社区资料和搜索摘录里明确、具体的说法；只有攻略或社区资料时，'
+                 '在回答里简单注明“据某某”。资料之间有冲突时说明分歧。', .75),
+    'loose': ('宽松：尽量给出有帮助的回答，资料能大致支持就可以回答并注明来源类型；'
+              '不确定的部分直接说不确定。', .6),
+}
 # Quick stages only classify or check; low reasoning keeps them within a chat-friendly delay.
+# Planning an explicit request runs at normal effort: misreading the question wastes the whole answer.
 FAST_STAGES = {'plan', 'verify'}
 # An @mention is '@name' then U+2005, or whitespace / end of text when typed by hand.
 MENTION = re.compile(r'@[^\s\u2005@]{1,40}(?:\u2005|\s|$)')
@@ -116,6 +125,8 @@ class ReplyEngine:
                           elapsed_ms=round((time.monotonic() - started) * 1000))
             if forced and not answer:
                 message = detail if reason in {'missing_context', 'group_local'} else '暂时没查到足够明确的资料来确认这个问题。'
+                if reason not in {'missing_context', 'group_local'} and result.get('clarify'):
+                    message += '可以补充一下：' + result['clarify']
                 result.update(should_reply=True, answer=message or '请补充你想问的具体问题。')
             return result
 
@@ -124,6 +135,7 @@ class ReplyEngine:
             return list(dict.fromkeys([primary, *config.fallback_profile_ids]))
 
         async def call(prompt, data, schema, purpose):
+            quick = config.fast_stages and purpose in FAST_STAGES and not (purpose == 'plan' and explicit)
             last_error = None
             for profile_id in stage_profiles(purpose):
                 revision = model_revision if profile_id == config.ai_profile_id else (profile_revisions or {}).get(profile_id)
@@ -135,7 +147,7 @@ class ReplyEngine:
                         [ChatMessage(role='system', content=prompt),
                          ChatMessage(role='user', content=json.dumps(data, ensure_ascii=False))],
                         purpose='group_reply.' + purpose, expected_revision=revision,
-                        reasoning_effort='low' if config.fast_stages and purpose in FAST_STAGES else None)
+                        reasoning_effort='low' if quick else None)
                     for key, value in response.usage.items():
                         result['usage'][key] = result['usage'].get(key, 0) + value
                     parsed = parse_json(response.text, schema)
@@ -145,6 +157,13 @@ class ReplyEngine:
                     last_error = error
                     result['attempts'].append({**attempt, 'status': 'failed', 'detail': str(error)[:120]})
             raise last_error
+
+        policy, ceiling = POLICIES[config.strictness]
+        threshold = config.confidence_threshold if ceiling is None else min(config.confidence_threshold, ceiling)
+        retrieval_options = config.retrieval
+        if config.strictness != 'strict':
+            # Game guides are where most practical answers live; strict mode keeps them out.
+            retrieval_options = retrieval_options.model_copy(update={'allow_unverified_sources': True})
 
         def with_glossary(data):
             return {**data, 'group_glossary': config.glossary} if config.glossary.strip() else data
@@ -172,13 +191,18 @@ class ReplyEngine:
                 result['decision'] = decision
                 if decision['choice'] == 'ignore' and decision['probabilities']['ignore'] >= config.decision_skip_threshold:
                     return finish('not_actionable', '决策模型判定为明确的非求助消息')
-            plan = await call(config.plan_prompt or PLAN_PROMPT, with_glossary(context), QueryPlan, 'plan')
+            plan = await call(config.plan_prompt or PLAN_PROMPT,
+                              with_glossary({**context, 'request': 'explicit' if explicit else 'proactive'}), QueryPlan, 'plan')
             result['plan'] = plan.model_dump()
             if not explicit and result['decision'] is None and not plan.need_answer:
                 return finish('not_actionable', plan.reason)
             if not plan.enough_context or not plan.question:
                 detail = plan.missing_context.strip() or '请补充具体的游戏、角色或事件，以及你想了解的条件。'
-                return finish('missing_context', detail)
+                # Someone who asked directly wants a lookup: search the most likely reading first and only
+                # ask for details if that finds nothing. The planner flips on this judgement call.
+                if not (explicit and plan.question and plan.queries and plan.domain != 'group_local'):
+                    return finish('missing_context', detail)
+                result['clarify'] = detail
             if plan.domain == 'group_local' or plan.intent in {'coordination', 'chitchat', 'rhetorical'}:
                 return finish('group_local', '这需要群内成员或活动负责人的确认，可以补充具体公告或相关信息再问我。')
             if faq_lookup is not None:
@@ -198,43 +222,54 @@ class ReplyEngine:
                 if search_revision is None:
                     raise AIError('任务创建时搜索模型配置不可用')
             retrieval = await self.retriever.retrieve(plan, config.search_mode, search_profile,
-                                                       search_revision, at, options=config.retrieval,
+                                                       search_revision, at, options=retrieval_options,
                                                        search_prompt=config.search_prompt or PROMPTS['search_prompt'])
             result['searches'] = retrieval.searches
             result['retrieval_errors'] = retrieval.errors
-            evidence = evidence_chunks(retrieval, plan, options=config.retrieval)
+            evidence = evidence_chunks(retrieval, plan, options=retrieval_options)
             result['evidence'] = evidence
             if not evidence:
                 return finish('retrieval_empty', '没有取得能支持回答的正文资料')
-            payload = with_glossary({'conversation': context, 'question': plan.model_dump(), 'sources': evidence})
+            payload = with_glossary({'conversation': context, 'question': plan.model_dump(), 'sources': evidence,
+                                     'answer_policy': policy})
             draft = await call(config.answer_prompt or ANSWER_PROMPT, payload, AnswerDraft, 'answer')
             result['draft'] = draft.model_dump()
             result['confidence'] = draft.confidence
-            if not draft.confident or draft.confidence < config.confidence_threshold or not draft.answer.strip():
+            if not draft.confident or draft.confidence < threshold or not draft.answer.strip():
                 return finish('insufficient_evidence', draft.missing)
             if len(draft.answer) > config.max_reply_chars or re.search(r'https?://', draft.answer):
                 return finish('invalid_answer', '回答长度或引用格式不符合配置')
             by_id = {item['id']: item for item in evidence}
             verified = []
+            verbatim = True
             for citation in draft.citations:
                 source = by_id.get(citation.source_id)
-                if not source or compact_text(citation.quote) not in compact_text(source['text']):
+                matches = bool(source) and compact_text(citation.quote) in compact_text(source['text'])
+                if not source or (not matches and config.strictness == 'strict'):
                     return finish('invalid_citation', '模型引用未能与实际来源逐字匹配')
+                verbatim = verbatim and matches
                 verified.append(source)
             if not verified:
                 return finish('insufficient_evidence', '回答缺少可验证的来源')
-            review = await call(config.review_prompt or REVIEW_PROMPT, {**payload, 'draft': draft.model_dump()},
-                                AnswerReview, 'verify')
-            result['review'] = review.model_dump()
-            result['confidence'] = min(draft.confidence, review.confidence)
-            if not (review.supported and review.answers_question and review.version_consistent
-                    and review.confidence >= config.confidence_threshold):
-                return finish('insufficient_evidence', review.reason)
+            # Strict mode always gets an independent review. Balanced skips it when every quote was found
+            # word for word in its source and the draft is confident; loose never reviews.
+            # A paraphrased quote in balanced mode goes to the independent review instead of failing outright.
+            needs_review = (config.strictness == 'strict'
+                            or (config.strictness == 'balanced' and not (verbatim and draft.confidence >= .85)))
+            if needs_review:
+                review = await call(config.review_prompt or REVIEW_PROMPT, {**payload, 'draft': draft.model_dump()},
+                                    AnswerReview, 'verify')
+                result['review'] = review.model_dump()
+                result['confidence'] = min(draft.confidence, review.confidence)
+                if not (review.supported and review.answers_question and review.version_consistent
+                        and review.confidence >= threshold):
+                    return finish('insufficient_evidence', review.reason)
             sources = list({source['url']: {key: source[key] for key in ('title', 'url', 'source_kind')}
                             for source in verified}.values())
             result['sources'] = sources
             result['body'] = draft.answer.strip()
             footer = source_footer(sources, config.source_style)
-            return finish('supported', review.reason, result['body'] + ('\n\n' + footer if footer else ''))
+            detail = result['review']['reason'] if result['review'] else '引用与来源逐字一致，按当前严格程度直接回答'
+            return finish('supported', detail, result['body'] + ('\n\n' + footer if footer else ''))
         except (AIError, RetrievalError) as error:
             return finish('error', str(error))

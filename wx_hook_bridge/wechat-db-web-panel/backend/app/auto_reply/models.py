@@ -5,7 +5,7 @@ from ..retrieval.config import RetrievalConfig
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-SearchMode = Literal['bwiki', 'deepseek', 'gpt', 'hybrid']
+SearchMode = Literal['bwiki', 'deepseek', 'gpt', 'hybrid', 'deepseek_direct']
 
 
 class ReplyConfig(BaseModel):
@@ -50,6 +50,10 @@ class ReplyConfig(BaseModel):
     glossary: str = Field(default='', max_length=4000)
     source_style: Literal['links', 'one_link', 'names'] = 'one_link'
     faq_enabled: bool = True
+    # How much evidence an answer needs: strict = official/wiki text only and an independent review;
+    # balanced = guide sites and search excerpts count, review only when citations are not verbatim;
+    # loose = answer whenever sources roughly support it.
+    strictness: Literal['strict', 'balanced', 'loose'] = 'balanced'
     faq_ttl_days: int = Field(default=7, ge=1, le=90)
 
     @field_validator('mention_names')

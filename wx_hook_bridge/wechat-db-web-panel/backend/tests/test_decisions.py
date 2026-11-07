@@ -121,7 +121,7 @@ def test_stage_models_custom_prompts_and_retrieval_settings_are_used():
             assert kwargs['search_prompt'] == 'custom search {question}'
             return await super().retrieve(*args, **kwargs)
     model = Model()
-    config = ReplyConfig(ai_profile_id='answer', planning_profile_id='planner', review_profile_id='reviewer',
+    config = ReplyConfig(ai_profile_id='answer', planning_profile_id='planner', review_profile_id='reviewer', strictness='strict',
         plan_prompt='custom plan', answer_prompt='custom answer', review_prompt='custom review',
         search_prompt='custom search {question}', retrieval={'deepseek_count': 9})
     result = asyncio.run(ReplyEngine(model, Source()).evaluate(engine_context(), config,

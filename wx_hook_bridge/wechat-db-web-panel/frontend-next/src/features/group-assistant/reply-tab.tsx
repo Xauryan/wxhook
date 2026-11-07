@@ -315,6 +315,7 @@ function ReplySettings({
       source_style: 'one_link',
       faq_enabled: true,
       faq_ttl_days: 7,
+      strictness: 'balanced',
     }
   )
   const [names, setNames] = useState((config.mention_names ?? []).join('，'))
@@ -419,6 +420,34 @@ function ReplySettings({
                   ))}
                 </select>
               </div>
+            </div>
+            <div className='space-y-2'>
+              <Label htmlFor='reply-strictness'>回答严格程度</Label>
+              <select
+                id='reply-strictness'
+                className={selectStyle}
+                value={config.strictness ?? 'balanced'}
+                onChange={(event) =>
+                  update(
+                    'strictness',
+                    event.target.value as ReplyConfig['strictness']
+                  )
+                }
+              >
+                <option value='balanced'>
+                  平衡：攻略站、社区资料也算数，引用原文对得上就直接回答
+                </option>
+                <option value='strict'>
+                  严格：只认官方和专业资料站原文，每次再单独核验一遍
+                </option>
+                <option value='loose'>
+                  宽松：资料大致支持就回答，注明来源类型
+                </option>
+              </select>
+              <p className='text-xs text-muted-foreground'>
+                “DeepSeek
+                直接搜索”最快：只用搜索结果自带的摘录回答，不再逐个打开网页。但像技能数值表这种在页面深处的内容，摘录里经常没有。
+              </p>
             </div>
             <p className='text-xs text-muted-foreground'>
               开启真实回复后 /ask

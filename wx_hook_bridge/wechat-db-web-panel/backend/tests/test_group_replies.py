@@ -148,14 +148,14 @@ class SourceFixture:
 
 def test_grounded_answer_requires_matching_quote_and_independent_review():
     engine = ReplyEngine(ModelFixture(), SourceFixture())
-    result = asyncio.run(engine.evaluate(engine_context(), configuration(), model_revision=1))
+    result = asyncio.run(engine.evaluate(engine_context(), configuration(strictness='strict'), model_revision=1))
     assert result['should_reply']
     assert 'https://id5.163.com/fixture' in result['answer']
     invalid = ReplyEngine(ModelFixture(quote='完全虚构的引用内容不在原文中'), SourceFixture())
-    result = asyncio.run(invalid.evaluate(engine_context(), configuration(), model_revision=1))
+    result = asyncio.run(invalid.evaluate(engine_context(), configuration(strictness='strict'), model_revision=1))
     assert not result['should_reply'] and result['reason'] == 'invalid_citation'
     rejected = ReplyEngine(ModelFixture(supported=False), SourceFixture())
-    result = asyncio.run(rejected.evaluate(engine_context(), configuration(), model_revision=1))
+    result = asyncio.run(rejected.evaluate(engine_context(), configuration(strictness='strict'), model_revision=1))
     assert not result['should_reply'] and result['reason'] == 'insufficient_evidence'
 
 

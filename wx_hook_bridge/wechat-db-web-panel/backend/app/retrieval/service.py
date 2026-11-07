@@ -82,35 +82,55 @@ class Retriever:
         return result
 
     async def wiki_page(self, title, as_of, ttl=86400):
+        # Read the revision as of the start of the hour: questions within the same hour then share one
+        # cached read instead of each asking BWIKI again, which is what gets the client rate-limited.
+        hour = as_of.replace(minute=0, second=0, microsecond=0)
         async def load():
-            return asdict(await self.wiki.page(title, as_of))
-        data = await self._cached(['wiki-revision-v2', title, as_of.isoformat()], load, ttl)
+            return asdict(await self.wiki.page(title, hour))
+        data = await self._cached(['wiki-revision-v3', title, hour.isoformat()], load, ttl)
         return Document(**data)
+
+    @staticmethod
+    def excerpt(hit):
+        """The text the search engine returned with a hit, used when the page itself is not read."""
+        return Document(hit.title, hit.url, hit.content or hit.summary or hit.snippet, 'deepseek-search',
+                        source_kind(hit.url, hit.authority), hit.published_at, authority=hit.authority)
 
     async def _wiki_hit(self, hit, as_of, options):
         title = self.wiki.title_from_url(hit.url)
         if not title:
             page_id = parse_qs(urlsplit(hit.url).query).get('curid', [''])[0]
             if page_id.isdigit():
-                data = await self.wiki._get({'action': 'query', 'pageids': page_id})
-                page = next(iter(data.get('query', {}).get('pages', {}).values()), {})
-                title = page.get('title')
+                async def resolve():
+                    data = await self.wiki._get({'action': 'query', 'pageids': page_id})
+                    page = next(iter(data.get('query', {}).get('pages', {}).values()), {})
+                    return {'title': page.get('title')}
+                found = await self._cached(['wiki-curid', page_id], resolve, options.wiki_cache_seconds)
+                title = found['title']
         if not title:
             raise RetrievalError('BWIKI 搜索结果没有可读取的条目')
         return await self.wiki_page(title, as_of, options.wiki_cache_seconds)
 
     async def _fetch(self, hit, as_of, options):
-        if (urlsplit(hit.url).hostname or '') == 'wiki.biligame.com' and '/dwrg/' in urlsplit(hit.url).path:
-            return await self._wiki_hit(hit, as_of, options)
         published = parsed_date(hit.published_at)
-        if published and published.tzinfo and published > as_of:
-            raise RetrievalError('检索结果发布时间晚于该消息')
-        async def load():
-            title, content = await self.deepseek.fetch(hit.url)
-            return {'title': title or hit.title, 'content': content}
-        page = await self._cached(['fetch', hit.url], load, options.page_cache_seconds)
-        return Document(page['title'], hit.url, page['content'], 'deepseek-fetch',
-                        source_kind(hit.url, hit.authority), hit.published_at, authority=hit.authority)
+        future = bool(published and published.tzinfo and published > as_of)
+        try:
+            if (urlsplit(hit.url).hostname or '') == 'wiki.biligame.com' and '/dwrg/' in urlsplit(hit.url).path:
+                return await self._wiki_hit(hit, as_of, options)
+            if future:
+                raise RetrievalError('检索结果发布时间晚于该消息')
+            async def load():
+                title, content = await self.deepseek.fetch(hit.url)
+                return {'title': title or hit.title, 'content': content}
+            page = await self._cached(['fetch', hit.url], load, options.page_cache_seconds)
+            return Document(page['title'], hit.url, page['content'], 'deepseek-fetch',
+                            source_kind(hit.url, hit.authority), hit.published_at, authority=hit.authority)
+        except RetrievalError:
+            # The page could not be read (rate limit, timeout, error page): keep the search excerpt
+            # instead of losing a relevant hit, unless it was published after the question.
+            if future or len(hit.content or hit.summary or '') < 200:
+                raise
+            return self.excerpt(hit)
 
     async def retrieve(self, plan, mode, profile_id, revision, as_of, *, options=None, search_prompt=None):
         """Search every source at once, then read the best pages at once, all within one time budget."""
@@ -156,9 +176,11 @@ class Retriever:
             # Date syntax also applies in live processing. It limits future-dated articles.
             bounded = query[:100] + ' before:' + (as_of + timedelta(days=1)).date().isoformat()
             async def load():
+                # Excerpts come back with the results: direct mode answers from them, and the other
+                # modes fall back to them when a page cannot be read.
                 return [asdict(hit) for hit in await self.deepseek.search(bounded,
-                    original_question=plan.question[:128], count=options.deepseek_count)]
-            return bounded, await self._cached(['deepseek-search', bounded, plan.question[:128], options.deepseek_count],
+                    original_question=plan.question[:128], count=options.deepseek_count, need_content=True)]
+            return bounded, await self._cached(['deepseek-search-v2', bounded, plan.question[:128], options.deepseek_count],
                                                load, options.search_cache_seconds)
 
         async def search_gpt():
@@ -172,7 +194,7 @@ class Retriever:
         if use_wiki:
             jobs += [(('page', title), self.wiki_page(title, as_of, options.wiki_cache_seconds)) for title in titles]
             jobs += [(('bwiki', query), search_wiki(query)) for query in (titles or queries)[:options.search_queries]]
-        if mode in {'deepseek', 'hybrid'}:
+        if mode in {'deepseek', 'hybrid', 'deepseek_direct'}:
             jobs += [(('deepseek', query), search_deepseek(query)) for query in queries]
         if mode == 'gpt':
             jobs.append((('gpt', plan.question), search_gpt()))
@@ -202,6 +224,13 @@ class Retriever:
             if source_kind(hit.url, hit.authority) == 'unverified' and not options.allow_unverified_sources:
                 continue
             chosen.append(hit)
+        if mode == 'deepseek_direct':
+            # Answer straight from the search excerpts: no page reads and no BWIKI requests.
+            published_ok = [hit for hit in chosen if not ((date := parsed_date(hit.published_at))
+                                                          and date.tzinfo and date > as_of)]
+            result.documents.extend(self.excerpt(hit) for hit in published_ok if (hit.content or hit.summary))
+            result.elapsed_ms = round((time.monotonic() - started) * 1000)
+            return result
         fetched = dict(await run([(index, self._fetch(hit, as_of, options)) for index, hit in enumerate(chosen)], .9))
         result.documents.extend(fetched[index] for index in sorted(fetched))
 

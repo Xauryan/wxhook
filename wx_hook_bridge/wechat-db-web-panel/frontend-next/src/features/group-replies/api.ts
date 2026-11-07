@@ -1,11 +1,17 @@
 import { base } from '@/features/chats/api'
 
-export type SearchMode = 'bwiki' | 'deepseek' | 'gpt' | 'hybrid'
+export type SearchMode =
+  | 'bwiki'
+  | 'deepseek'
+  | 'gpt'
+  | 'hybrid'
+  | 'deepseek_direct'
 export const modeNames: Record<SearchMode, string> = {
   bwiki: 'BWIKI 直连',
   deepseek: 'DeepSeek Search / Fetch',
   gpt: 'GPT Web Search',
   hybrid: 'BWIKI + DeepSeek',
+  deepseek_direct: 'DeepSeek 直接搜索（最快）',
 }
 export type PromptKey =
   | 'decision_prompt'
@@ -63,6 +69,7 @@ export type ReplyConfig = Partial<Record<PromptKey, string | null>> & {
   glossary?: string
   source_style?: 'links' | 'one_link' | 'names'
   faq_enabled?: boolean
+  strictness?: 'strict' | 'balanced' | 'loose'
   faq_ttl_days?: number
 }
 export type FAQEntry = {
