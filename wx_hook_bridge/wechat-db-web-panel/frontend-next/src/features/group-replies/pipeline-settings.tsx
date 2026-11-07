@@ -5,18 +5,14 @@ import type { PromptKey, ReplyConfig, RetrievalConfig } from './api'
 
 const retrievalDefaults: RetrievalConfig = {
   search_queries: 2,
-  wiki_titles: 3,
-  wiki_search_count: 4,
   deepseek_count: 6,
   max_documents: 5,
-  max_wiki_documents: 7,
   evidence_limit: 10,
   chunk_chars: 1100,
   chunks_per_document: 3,
   search_cache_seconds: 900,
   time_budget_seconds: 40,
   page_cache_seconds: 1800,
-  wiki_cache_seconds: 86400,
   allow_unverified_sources: false,
 }
 // Same default as the backend; checked against 129 real questions from the group.
@@ -148,18 +144,14 @@ export function PipelineSettings({
           {(
             [
               ['search_queries', '搜索词最多条数', 1, 10],
-              ['wiki_titles', '直读 Wiki 条目数', 1, 10],
-              ['wiki_search_count', '每次 Wiki 搜索结果数', 1, 20],
               ['deepseek_count', '每次 DeepSeek 搜索结果数', 1, 50],
               ['max_documents', '读取正文最多篇数', 1, 20],
-              ['max_wiki_documents', '补充技能页后最多篇数', 1, 30],
               ['evidence_limit', '送入模型的证据段数', 1, 40],
               ['chunk_chars', '每段证据字符数', 300, 10000],
               ['chunks_per_document', '每篇正文最多选段数', 1, 10],
               ['time_budget_seconds', '检索总时限（秒）', 5, 300],
               ['search_cache_seconds', '搜索缓存（秒，0 为关闭）', 0, 86400],
               ['page_cache_seconds', '网页正文缓存（秒）', 0, 86400],
-              ['wiki_cache_seconds', 'Wiki 修订缓存（秒）', 0, 604800],
             ] as const
           ).map(([key, label, min, max]) => (
             <div key={key} className='space-y-2'>

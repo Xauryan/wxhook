@@ -1,18 +1,18 @@
 import { base } from '@/features/chats/api'
 
-export type SearchMode =
-  | 'bwiki'
-  | 'deepseek'
-  | 'gpt'
-  | 'hybrid'
-  | 'deepseek_direct'
+export type SearchMode = 'deepseek' | 'deepseek_direct' | 'gpt'
 export const modeNames: Record<SearchMode, string> = {
-  bwiki: 'BWIKI 直连',
-  deepseek: 'DeepSeek Search / Fetch',
-  gpt: 'GPT Web Search',
-  hybrid: 'BWIKI + DeepSeek',
+  deepseek: 'DeepSeek 搜索并读取网页',
   deepseek_direct: 'DeepSeek 直接搜索（最快）',
+  gpt: 'GPT Web Search',
 }
+// Runs recorded before the BWIKI source was removed keep their old mode names.
+const legacyModeNames: Record<string, string> = {
+  bwiki: 'BWIKI 直连（已停用）',
+  hybrid: 'BWIKI + DeepSeek（已停用）',
+}
+export const modeName = (mode: string) =>
+  modeNames[mode as SearchMode] ?? legacyModeNames[mode] ?? mode
 export type PromptKey =
   | 'decision_prompt'
   | 'plan_prompt'
@@ -21,18 +21,14 @@ export type PromptKey =
   | 'search_prompt'
 export type RetrievalConfig = {
   search_queries: number
-  wiki_titles: number
-  wiki_search_count: number
   deepseek_count: number
   max_documents: number
-  max_wiki_documents: number
   evidence_limit: number
   chunk_chars: number
   chunks_per_document: number
   search_cache_seconds: number
   time_budget_seconds?: number
   page_cache_seconds: number
-  wiki_cache_seconds: number
   allow_unverified_sources: boolean
 }
 export type ReplyConfig = Partial<Record<PromptKey, string | null>> & {
@@ -111,7 +107,7 @@ export type RunSummary = {
   id: string
   message_id: number
   trigger_mode: 'original' | 'ask'
-  search_mode: SearchMode
+  search_mode: string
   status: string
   input: string
   answer: string | null

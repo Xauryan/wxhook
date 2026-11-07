@@ -1,16 +1,12 @@
 import asyncio
-from datetime import datetime, timezone
-import json
-import re
 import time
-from urllib.parse import quote, unquote, urlsplit
 from urllib.request import getproxies
 
 import httpx
 
 from ..ai.service import AIError, OpenAICompatibleProvider
 from .config import SEARCH_PROMPT
-from .models import Document, RetrievalError, SearchHit, public_url
+from .models import RetrievalError, SearchHit, public_url
 
 
 def client_options(transport):
@@ -93,87 +89,6 @@ class DeepSeekSearchFetch:
         if not isinstance(data.get('content'), str) or not data['content'].strip():
             raise RetrievalError('DeepSeek Fetch 未返回可用正文')
         return str(data.get('title') or ''), data['content']
-
-
-class BWIKISource:
-    base_url = 'https://wiki.biligame.com/dwrg/'
-    api_url = base_url + 'api.php'
-
-    # BWIKI answers 567 (and the usual 403/429) when it limits automated clients.
-    LIMITED_STATUSES = {403, 429, 567}
-    BACKOFF_SECONDS = 600
-
-    def __init__(self, *, transport=None):
-        self.transport = transport
-        self._lock = asyncio.Lock()
-        self._last_request = 0.0
-        self._paused_until = 0.0
-
-    async def _get(self, params):
-        async with self._lock:
-            if time.monotonic() < self._paused_until:
-                # Respect the site's limit instead of retrying into it; other sources still run.
-                raise RetrievalError('BWIKI 暂时限制访问，本次已跳过')
-            delay = .5 - (time.monotonic() - self._last_request)
-            if delay > 0:
-                await asyncio.sleep(delay)
-            self._last_request = time.monotonic()
-            async with httpx.AsyncClient(timeout=30, **client_options(self.transport)) as client:
-                try:
-                    response = await client.get(self.api_url, params={'format': 'json', **params},
-                                                headers={'User-Agent': 'WeChatKnowledge/1.0'})
-                    if response.status_code in self.LIMITED_STATUSES:
-                        self._paused_until = time.monotonic() + self.BACKOFF_SECONDS
-                        raise RetrievalError(f'BWIKI 返回 HTTP {response.status_code}，暂停读取 10 分钟')
-                    if response.status_code != 200:
-                        raise RetrievalError(f'BWIKI 返回 HTTP {response.status_code}')
-                    data = response.json()
-                except (httpx.HTTPError, ValueError):
-                    raise RetrievalError('BWIKI 暂时无法读取') from None
-            if 'error' in data:
-                raise RetrievalError('BWIKI 查询失败')
-            return data
-
-    async def search(self, query, *, count=5):
-        data = await self._get({'action': 'query', 'list': 'search', 'srsearch': query[:128],
-                                'srnamespace': 0, 'srlimit': count})
-        return [SearchHit(title=row['title'], url=self.base_url + quote(row['title']),
-                          snippet=re.sub('<[^>]+>', '', row.get('snippet', '')),
-                          published_at=row.get('timestamp')) for row in data.get('query', {}).get('search', [])]
-
-    async def page(self, title: str, as_of: datetime):
-        if (not title or len(title) > 200 or title.startswith('/')
-                or (':' in title and title.split(':', 1)[0] != '改动')):
-            raise RetrievalError('BWIKI 条目名称无效')
-        data = await self._get({'action': 'query', 'prop': 'revisions', 'titles': title,
-            'redirects': 1, 'rvprop': 'ids|timestamp|content', 'rvslots': 'main', 'rvlimit': 1,
-            'rvstart': as_of.astimezone(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'), 'rvdir': 'older'})
-        pages = data.get('query', {}).get('pages', {})
-        for page in pages.values():
-            revisions = page.get('revisions') or []
-            if not revisions:
-                continue
-            revision = revisions[0]
-            content = revision.get('slots', {}).get('main', {}).get('*', '')
-            if not content:
-                continue
-            actual_title = page['title']
-            # Original revision text avoids rendering historical pages with today's templates.
-            content = re.sub(r'<!--.*?-->', '', content, flags=re.S)
-            content = re.sub(r'<(?:script|style)\b[^>]*>.*?</(?:script|style)>', '', content, flags=re.S | re.I)
-            return Document(actual_title, self.base_url + quote(actual_title) + '?oldid=' + str(revision['revid']),
-                            content, 'bwiki', 'community_wiki', revision['timestamp'], str(revision['revid']),
-                            revision_as_of=as_of.isoformat())
-        raise RetrievalError('BWIKI 在该消息时间之前没有可读取的条目版本')
-
-    @staticmethod
-    def title_from_url(url):
-        parsed = urlsplit(url)
-        if parsed.hostname == 'wiki.biligame.com' and parsed.path.startswith('/dwrg/'):
-            title = unquote(parsed.path[len('/dwrg/'):])
-            if title and title not in {'api.php', 'index.php'}:
-                return title
-        return None
 
 
 class GPTWebSearch:

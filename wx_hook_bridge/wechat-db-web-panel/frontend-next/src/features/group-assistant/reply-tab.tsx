@@ -22,6 +22,7 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { ModelProfile } from '@/features/ai/api'
 import {
+  modeName,
   modeNames,
   replyApi,
   type ReplyConfig,
@@ -132,7 +133,7 @@ export function ReplyTab({
       >
         <p className='text-sm text-muted-foreground'>
           {profileName(profiles, config.ai_profile_id)} 回答 ·{' '}
-          {modeNames[config.search_mode]} 检索 · 读取前 {config.context_minutes}{' '}
+          {modeName(config.search_mode)} 检索 · 读取前 {config.context_minutes}{' '}
           分钟内最多 {config.context_messages} 条消息
         </p>
         <p className='text-sm text-muted-foreground'>
@@ -298,7 +299,7 @@ function ReplySettings({
       ai_profile_id: models[0]?.id ?? '',
       decision_profile_ids: [],
       decision_skip_threshold: 0.9,
-      search_mode: 'hybrid',
+      search_mode: 'deepseek',
       context_messages: 24,
       context_minutes: 15,
       cooldown_seconds: 60,

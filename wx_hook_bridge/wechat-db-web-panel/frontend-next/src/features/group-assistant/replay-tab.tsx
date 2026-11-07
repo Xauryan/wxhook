@@ -20,6 +20,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
+  modeName,
   modeNames,
   replyApi,
   type BatchSummary,
@@ -180,7 +181,7 @@ function ReplayForm({
   })
   const [filter, setFilter] = useState('')
   const [manualIds, setManualIds] = useState('')
-  const [modes, setModes] = useState<SearchMode[]>(['bwiki', 'deepseek', 'gpt'])
+  const [modes, setModes] = useState<SearchMode[]>(['deepseek', 'deepseek_direct'])
   const [triggers, setTriggers] = useState<Trigger[]>(['original', 'ask'])
   const [requestId, setRequestId] = useState(newRequestId)
   const changed = () => setRequestId(newRequestId())
@@ -444,7 +445,7 @@ function BatchResults({
               >
                 <span className='flex items-center justify-between gap-2'>
                   <span className='text-sm font-medium'>
-                    {modeNames[run.search_mode]}
+                    {modeName(run.search_mode)}
                   </span>
                   <RunBadge run={run} />
                 </span>

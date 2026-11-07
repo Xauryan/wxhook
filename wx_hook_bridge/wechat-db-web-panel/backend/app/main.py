@@ -43,7 +43,7 @@ from .ai.decisions import DecisionService
 from .ai.store import AIStore
 from .ai.router import create_ai_router
 from .ai.tool_store import ToolStore
-from .retrieval.providers import BWIKISource, DeepSeekSearchFetch, GPTWebSearch
+from .retrieval.providers import DeepSeekSearchFetch, GPTWebSearch
 from .retrieval.service import RetrievalCache, Retriever
 from .auto_reply.engine import ReplyEngine
 from .auto_reply.service import GroupReplyService
@@ -76,7 +76,7 @@ archive_local = ArchiveLocal(archive_insights, live_chat)
 ai_service = AIService(AIStore(repository.settings.cache_path.parent / 'ai' / 'settings.sqlite'))
 ai_tools = ToolStore(ai_service.store)
 deepseek_tools = DeepSeekSearchFetch(ai_tools)
-retriever = Retriever(BWIKISource(), deepseek_tools, GPTWebSearch(ai_service.store),
+retriever = Retriever(deepseek_tools, GPTWebSearch(ai_service.store),
                       RetrievalCache(repository.settings.cache_path.parent / 'retrieval' / 'cache.sqlite'))
 group_replies = GroupReplyService(live_chat, ai_service, ReplyEngine(ai_service, retriever, DecisionService(ai_service)),
     repository.settings.cache_path.parent / 'group-replies',

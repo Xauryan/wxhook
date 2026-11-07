@@ -17,7 +17,7 @@ from backend.app.auto_reply.models import QueryPlan, ReplyConfig, ReplyRuleEdit,
 from backend.app.auto_reply.router import create_reply_router
 from backend.app.auto_reply.service import GroupReplyService
 from backend.app.retrieval.models import Document, RetrievalError, RetrievalResult
-from backend.app.retrieval.providers import BWIKISource, DeepSeekSearchFetch, GPTWebSearch
+from backend.app.retrieval.providers import DeepSeekSearchFetch, GPTWebSearch
 
 
 class LocalMessages:
@@ -105,7 +105,7 @@ def test_live_and_replay_share_identical_inputs_and_only_live_delivers(tmp_path)
     asyncio.run(service.execute(service.store.claim()))
     assert len(live.sent) == 1
     payload = ReplayRequest(account='self', room='room@chatroom', message_ids=[2],
-                            search_modes=['hybrid'], request_id='a' * 32)
+                            search_modes=['deepseek'], request_id='a' * 32)
     app = FastAPI()
     app.include_router(create_reply_router(service))
     with TestClient(app) as client:
@@ -219,17 +219,6 @@ def test_deepseek_rejects_auth_error_without_retry_or_secret_echo():
         asyncio.run(adapter.search('test'))
     assert len(calls) == 1
     assert 'fixture-key' not in str(error.value)
-
-
-def test_bwiki_reads_revision_at_message_time():
-    def handle(request):
-        assert request.url.params['rvstart'] == '2026-10-10T00:00:00Z'
-        assert request.url.params['rvdir'] == 'older'
-        return httpx.Response(200, json={'query': {'pages': {'1': {'title': '穿刺', 'revisions': [{
-            'revid': 12, 'timestamp': '2026-10-09T00:00:00Z', 'slots': {'main': {'*': '原始修订正文'}}}]}}}})
-    wiki = BWIKISource(transport=httpx.MockTransport(handle))
-    page = asyncio.run(wiki.page('穿刺', datetime(2026, 10, 10, tzinfo=timezone.utc)))
-    assert page.revision == '12' and page.content == '原始修订正文'
 
 
 def test_gpt_requires_actual_hosted_search_call():

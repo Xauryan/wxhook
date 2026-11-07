@@ -8,11 +8,23 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 # Checked against 129 real questions from the group: none lacks one of these signals.
 QUESTION_PATTERN = (r'[？?]|吗|么|呢|啥|什么|怎么|怎样|如何|为什么|为啥|几|多少|哪|谁|是不是|能不能|可不可以|会不会|'
                     r'有没有|区别|意思|咋|想问|请问|问下|问一下|求助|求教|帮忙|帮看|有人知道|谁知道')
-SearchMode = Literal['bwiki', 'deepseek', 'gpt', 'hybrid', 'deepseek_direct']
+SearchMode = Literal['deepseek', 'deepseek_direct', 'gpt']
+# The BWIKI API source was removed (it rate-limits automated clients); its modes now search with DeepSeek.
+LEGACY_MODES = {'bwiki': 'deepseek', 'hybrid': 'deepseek'}
+
+
+def current_mode(value):
+    return LEGACY_MODES.get(value, value) if isinstance(value, str) else value
 
 
 class ReplyConfig(BaseModel):
     model_config = ConfigDict(extra='forbid')
+
+    @field_validator('search_mode', mode='before')
+    @classmethod
+    def legacy_search_mode(cls, value):
+        return current_mode(value)
+
     enabled: bool = False
     proactive: bool = True
     ai_profile_id: str = Field(min_length=1, max_length=64)
@@ -33,7 +45,7 @@ class ReplyConfig(BaseModel):
     decision_profile_ids: list[str] = Field(default_factory=list, max_length=10)
     decision_skip_threshold: float = Field(default=.9, ge=.5, le=1)
     search_profile_id: str | None = Field(default=None, min_length=1, max_length=64)
-    search_mode: SearchMode = 'hybrid'
+    search_mode: SearchMode = 'deepseek'
     context_messages: int = Field(default=24, ge=4, le=60)
     context_minutes: int = Field(default=15, ge=1, le=60)
     processing_timeout_seconds: int = Field(default=360, ge=30, le=3600)
@@ -104,9 +116,14 @@ class ReplayRequest(BaseModel):
     account: str = Field(min_length=1, max_length=240)
     room: str = Field(min_length=1, max_length=240, pattern=r'@chatroom$')
     message_ids: list[int] = Field(min_length=1, max_length=250)
-    search_modes: list[SearchMode] = Field(default_factory=lambda: ['hybrid'], min_length=1, max_length=10)
+    search_modes: list[SearchMode] = Field(default_factory=lambda: ['deepseek'], min_length=1, max_length=10)
     trigger_modes: list[Literal['original', 'ask']] = Field(default_factory=lambda: ['original'], min_length=1, max_length=2)
     request_id: str = Field(pattern=r'^[a-f0-9]{32}$')
+
+    @field_validator('search_modes', mode='before')
+    @classmethod
+    def legacy_modes(cls, value):
+        return list(dict.fromkeys(current_mode(item) for item in value)) if isinstance(value, list) else value
 
 
 class QueryPlan(BaseModel):

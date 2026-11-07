@@ -5,8 +5,6 @@ import time
 from types import SimpleNamespace
 from uuid import uuid4
 
-import httpx
-import pytest
 
 from backend.app.ai.models import ChatMessage, ImageInput
 from backend.app.ai.service import AIError
@@ -17,7 +15,6 @@ from backend.app.auto_reply.models import ReplyRuleEdit
 from backend.app.auto_reply.service import GroupReplyService
 from backend.app.retrieval.config import RetrievalConfig
 from backend.app.retrieval.models import Document, RetrievalError, RetrievalResult, SearchHit
-from backend.app.retrieval.providers import BWIKISource
 from backend.app.retrieval.service import Retriever
 from backend.tests.test_live_chat import service  # noqa: F401
 from backend.tests.test_group_replies import (LocalMessages, ModelFixture, SourceFixture, configuration,
@@ -164,39 +161,22 @@ class Cache:
 
 
 def test_retrieval_runs_sources_in_parallel_within_time_budget():
-    class Wiki:
-        async def page(self, title, as_of):
-            await asyncio.sleep(5)
-        async def search(self, query, count):
-            await asyncio.sleep(5)
     class DeepSeek:
         async def search(self, query, original_question, count, need_content=False):
+            if query.startswith('慢'):
+                await asyncio.sleep(5)
             return [SearchHit(title='官方', url='https://id5.163.com/a', authority=3, score=1)]
         async def fetch(self, url):
             await asyncio.sleep(.1)
             return '官方', '正文'
-    Wiki.title_from_url = staticmethod(lambda url: None)
-    retriever = Retriever(Wiki(), DeepSeek(), None, Cache())
-    plan = SimpleNamespace(question='破轮拔刺', queries=['破轮拔刺'], wiki_titles=['破轮'], domain='identityv')
+    retriever = Retriever(DeepSeek(), None, Cache())
+    plan = SimpleNamespace(question='破轮拔刺', queries=['破轮拔刺', '慢查询'], wiki_titles=[], domain='identityv')
     started = time.monotonic()
-    result = asyncio.run(retriever.retrieve(plan, 'hybrid', 'p', 1, datetime(2026, 11, 6, tzinfo=timezone.utc),
+    result = asyncio.run(retriever.retrieve(plan, 'deepseek', 'p', 1, datetime(2026, 11, 6, tzinfo=timezone.utc),
                                             options=RetrievalConfig(time_budget_seconds=5)))
     assert time.monotonic() - started < 5.5
     assert [document.url for document in result.documents] == ['https://id5.163.com/a']
     assert any('未完成' in error for error in result.errors)
-
-
-def test_bwiki_pauses_after_rate_limit_instead_of_retrying():
-    calls = []
-    def handle(request):
-        calls.append(1)
-        return httpx.Response(567)
-    wiki = BWIKISource(transport=httpx.MockTransport(handle))
-    with pytest.raises(RetrievalError, match='567'):
-        asyncio.run(wiki.search('破轮'))
-    with pytest.raises(RetrievalError, match='跳过'):
-        asyncio.run(wiki.search('破轮'))
-    assert len(calls) == 1
 
 
 def reply_service(tmp_path, live, ai):
@@ -355,16 +335,13 @@ def test_direct_mode_answers_from_search_excerpts_without_reading_pages():
     excerpt = '破轮拔刺：2人存活时8/12/16秒，1人存活时5/8/11秒。' * 10
     search = ExcerptSearch([SearchHit(title='穿刺', url='https://wiki.biligame.com/dwrg/穿刺', content=excerpt, authority=3, score=1),
                             SearchHit(title='攻略', url='https://m.18183.com/a', content=excerpt, score=.5)])
-    class NoWiki:
-        async def page(self, *args):
-            raise AssertionError('direct mode must not call BWIKI')
     plan = SimpleNamespace(question='破轮拔刺', queries=['破轮拔刺'], wiki_titles=['破轮'], domain='identityv')
-    result = asyncio.run(Retriever(NoWiki(), search, None, Cache()).retrieve(
+    result = asyncio.run(Retriever(search, None, Cache()).retrieve(
         plan, 'deepseek_direct', 'p', 1, datetime(2026, 11, 6, tzinfo=timezone.utc),
         options=RetrievalConfig(allow_unverified_sources=True)))
     assert search.calls == [True] and search.fetched == []
     assert [document.provider for document in result.documents] == ['deepseek-search', 'deepseek-search']
-    strict = asyncio.run(Retriever(NoWiki(), search, None, Cache()).retrieve(
+    strict = asyncio.run(Retriever(search, None, Cache()).retrieve(
         plan, 'deepseek_direct', 'p', 1, datetime(2026, 11, 6, tzinfo=timezone.utc), options=RetrievalConfig()))
     assert [document.url for document in strict.documents] == ['https://wiki.biligame.com/dwrg/穿刺']
 
@@ -374,40 +351,11 @@ def test_unreadable_pages_fall_back_to_the_search_excerpt():
     search = ExcerptSearch([SearchHit(title='官方', url='https://ielts.neea.cn/fee', content=excerpt, authority=3, score=1),
                             SearchHit(title='短', url='https://ielts.org/short', content='太短', authority=3, score=.5)])
     plan = SimpleNamespace(question='雅思报名费', queries=['雅思报名费'], wiki_titles=[], domain='general')
-    result = asyncio.run(Retriever(None, search, None, Cache()).retrieve(
-        plan, 'hybrid', 'p', 1, datetime(2026, 11, 6, tzinfo=timezone.utc), options=RetrievalConfig()))
+    result = asyncio.run(Retriever(search, None, Cache()).retrieve(
+        plan, 'deepseek', 'p', 1, datetime(2026, 11, 6, tzinfo=timezone.utc), options=RetrievalConfig()))
     assert len(search.fetched) == 2
     assert [(document.url, document.provider) for document in result.documents] == [('https://ielts.neea.cn/fee', 'deepseek-search')]
     assert any('HTTP 500' in error for error in result.errors)
-
-
-def test_bwiki_pages_are_cached_per_hour_and_page_ids_are_resolved_once():
-    requests = []
-    def handle(request):
-        params = dict(request.url.params)
-        requests.append(params)
-        if params.get('pageids'):
-            return httpx.Response(200, json={'query': {'pages': {'8993': {'title': '穿刺'}}}})
-        return httpx.Response(200, json={'query': {'pages': {'1': {'title': '穿刺', 'revisions': [{
-            'revid': 12, 'timestamp': '2026-10-09T00:00:00Z', 'slots': {'main': {'*': '正文'}}}]}}}})
-    class MemoryCache(Cache):
-        def __init__(self):
-            self.store = {}
-        def get(self, key):
-            return self.store.get(key)
-        def put(self, key, payload, ttl):
-            self.store[key] = payload
-    retriever = Retriever(BWIKISource(transport=httpx.MockTransport(handle)), None, None, MemoryCache())
-    first = datetime(2026, 11, 6, 12, 5, 30, tzinfo=timezone.utc)
-    asyncio.run(retriever.wiki_page('穿刺', first))
-    asyncio.run(retriever.wiki_page('穿刺', first.replace(minute=58)))
-    assert len(requests) == 1 and requests[0]['rvstart'] == '2026-11-06T12:00:00Z'
-    asyncio.run(retriever.wiki_page('穿刺', first.replace(hour=13)))
-    assert len(requests) == 2
-    hit = SearchHit(title='穿刺', url='https://wiki.biligame.com/dwrg/?curid=8993')
-    for _ in range(2):
-        asyncio.run(retriever._wiki_hit(hit, first, RetrievalConfig()))
-    assert sum(1 for params in requests if params.get('pageids')) == 1
 
 
 def test_planner_is_told_whether_the_request_is_explicit_and_plans_proactive_chat_quickly():
@@ -445,3 +393,25 @@ def test_explicit_requests_search_the_likely_reading_before_asking_for_details()
     proactive = asyncio.run(ReplyEngine(Unsure(), SourceFixture()).evaluate(
         engine_context('新地图那个机械零件有啥用'), configuration(), model_revision=1))
     assert proactive['reason'] == 'missing_context' and not proactive['should_reply']
+
+
+def test_wiki_pages_are_read_through_deepseek_fetch_and_old_bwiki_settings_still_load():
+    from backend.app.auto_reply.models import ReplayRequest, ReplyConfig
+    class Search:
+        fetched = []
+        async def search(self, query, original_question, count, need_content=False):
+            return [SearchHit(title='蜡像师', url='https://wiki.biligame.com/dwrg/蜡像师', authority=3, score=1)]
+        async def fetch(self, url):
+            self.fetched.append(url)
+            return '蜡像师', '一阶技能 凝蜡：抛出蜡块，封住密码机。'
+    plan = SimpleNamespace(question='蜡像师一阶', queries=['蜡像师 一阶'], wiki_titles=['蜡像师'], domain='identityv')
+    result = asyncio.run(Retriever(Search(), None, Cache()).retrieve(
+        plan, 'deepseek', 'p', 1, datetime(2026, 11, 6, tzinfo=timezone.utc), options=RetrievalConfig()))
+    assert Search.fetched == ['https://wiki.biligame.com/dwrg/蜡像师']
+    assert [(document.provider, document.source_kind) for document in result.documents] == [('deepseek-fetch', 'community_wiki')]
+    saved = ReplyConfig.model_validate({'ai_profile_id': 'x', 'search_mode': 'hybrid',
+                                        'retrieval': {'wiki_titles': 3, 'max_wiki_documents': 7, 'max_documents': 4}})
+    assert saved.search_mode == 'deepseek' and saved.retrieval.max_documents == 4
+    replay = ReplayRequest(account='a', room='r@chatroom', message_ids=[1], request_id='a' * 32,
+                           search_modes=['bwiki', 'hybrid', 'deepseek_direct'])
+    assert replay.search_modes == ['deepseek', 'deepseek_direct']
