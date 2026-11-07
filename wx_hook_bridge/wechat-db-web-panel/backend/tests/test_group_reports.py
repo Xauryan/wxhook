@@ -235,3 +235,21 @@ def test_manual_api_generates_preview_and_records_model_failure(tmp_path):
         asyncio.run(service.generate(service.store.job(failed['id'])))
         assert service.store.job(failed['id'])['status'] == 'failed'
         assert '超时' in service.store.job(failed['id'])['detail']
+
+
+def test_render_failure_reason_reaches_the_job(tmp_path, monkeypatch):
+    import subprocess
+    from backend.app.group_reports import service as module
+    def missing_browser(*args, **kwargs):
+        return SimpleNamespace(returncode=1, stdout=b'', stderr=(
+            "browserType.launch: Executable doesn't exist at C:\ms-playwright\chrome.exe\n"
+            "\u2554\u2550\u2550\u2557\n\u2551 Looks like Playwright was just installed \u2551\n").encode())
+    monkeypatch.setattr(subprocess, 'run', missing_browser)
+    service = GroupReportService(FakeLive(tmp_path), SimpleNamespace(), tmp_path / 'reports')
+    with pytest.raises(module.RenderError, match='Playwright'):
+        asyncio.run(service.render({}, config(), tmp_path))
+    def no_node(*args, **kwargs):
+        raise FileNotFoundError('node')
+    monkeypatch.setattr(subprocess, 'run', no_node)
+    with pytest.raises(module.RenderError, match='Node'):
+        asyncio.run(service.render({}, config(), tmp_path))

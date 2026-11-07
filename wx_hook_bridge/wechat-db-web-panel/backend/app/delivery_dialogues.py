@@ -7,6 +7,7 @@ import sqlite3
 import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from .node_runtime import node_executable
 from .delivery_notifications import failure_message, now
 from .delivery_image_quotes import QuoteSourceUnavailable, ImageQuoteRejected, quote_payload
 from .delivery_mentions import MentionSelectionError
@@ -186,7 +187,7 @@ class DialogueService:
         output = temporary.with_suffix('.png')
         try:
             temporary.write_text(raw, encoding='utf-8')
-            result = await asyncio.to_thread(subprocess.run, ['node', str(self.renderer), str(temporary), str(output)], capture_output=True, timeout=150)
+            result = await asyncio.to_thread(subprocess.run, [node_executable(), str(self.renderer), str(temporary), str(output)], capture_output=True, timeout=150)
             if result.returncode:
                 raise ValueError('固定模板渲染失败；请检查 Node、Playwright 或长图高度限制（100000px），未截断')
             metrics = json.loads(result.stdout)

@@ -8,6 +8,7 @@ import subprocess
 import uuid
 from decimal import Decimal, ROUND_HALF_UP
 
+from .node_runtime import node_executable
 from .notification_text import count, timestamp, time_text, phone_tail
 
 
@@ -84,7 +85,7 @@ class DeliveryCallImageRenderer:
             try:
                 source.write_text(raw, encoding='utf8')
                 result = await asyncio.to_thread(subprocess.run,
-                    ['node', str(self.renderer), str(source), str(output)], capture_output=True,
+                    [node_executable(), str(self.renderer), str(source), str(output)], capture_output=True,
                     text=True, encoding='utf8', timeout=90,
                     creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
                 if result.returncode or not output.is_file():

@@ -15,10 +15,15 @@ from ..ai.service import AIError
 from ..analysis_snapshots import atomic_json
 from ..friend_automation import _AutomationLeaderLock
 from ..live_chat import SendText
+from ..node_runtime import failure_tail, node_executable
 from .analysis import DEFAULT_PROMPTS, ReportAnalyzer, text_report
 from .models import RuleConfig, RunRequest, TIMEZONE, next_run, scheduled_window
 from .source import GroupMessageSource
 from .store import ReportStore
+
+
+class RenderError(RuntimeError):
+    pass
 
 
 def command_window(text, now, rule):
@@ -172,7 +177,7 @@ class GroupReportService:
         except asyncio.CancelledError:
             raise
         except Exception as error:
-            detail = str(error) if isinstance(error, (AIError, HTTPException)) else '报告生成失败，请检查模型、微信连接及任务配置'
+            detail = str(error) if isinstance(error, (AIError, HTTPException, RenderError)) else '报告生成失败，请检查模型、微信连接及任务配置'
             current = self.store.job(ident)['status']
             if current != 'accepted':
                 self.store.update(ident, 'unknown' if current in {'sending', 'unknown'} else 'failed', detail[:300])
@@ -180,12 +185,20 @@ class GroupReportService:
     async def render(self, report, rule, directory):
         atomic_json(directory / 'render.json', {'report': report, 'skin': rule.skin, 'theme': rule.theme})
         script = Path(__file__).resolve().parents[3] / 'scripts/render-group-report.cjs'
-        result = await asyncio.to_thread(subprocess.run,
-            ['node', str(script), str(directory / 'render.json'), str(directory)],
-            stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120,
-            creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        try:
+            result = await asyncio.to_thread(subprocess.run,
+                [node_executable(), str(script), str(directory / 'render.json'), str(directory)],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=120,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0)
+        except FileNotFoundError:
+            raise RenderError('报告渲染失败：找不到 Node.js，请安装 Node 或设置 WXHOOK_NODE 环境变量') from None
+        except subprocess.TimeoutExpired:
+            raise RenderError('报告渲染失败：渲染超过 120 秒未完成') from None
         if result.returncode or not (directory / 'report.png').is_file() or not (directory / 'report.pdf').is_file():
-            raise RuntimeError('Report rendering failed')
+            reason = failure_tail(result)
+            if "Executable doesn't exist" in reason:
+                reason = '缺少 Playwright 浏览器，请在 frontend-next 下运行 npx playwright install chromium-headless-shell'
+            raise RenderError('报告渲染失败：' + reason)
         (directory / 'render.json').unlink(missing_ok=True)
 
     async def send(self, ident, *, explicit=True):
