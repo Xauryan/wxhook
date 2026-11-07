@@ -9,10 +9,13 @@ from backend.app.database import open_readonly
 from backend.app.main import app
 
 
-pytestmark = pytest.mark.skipif(
-    not (settings.database_root / "message" / "message_0.db").is_file(),
-    reason="local decrypted snapshot is unavailable",
-)
+pytestmark = [
+    pytest.mark.real_snapshot,
+    pytest.mark.skipif(
+        not (settings.database_root / "message" / "message_0.db").is_file(),
+        reason="local decrypted snapshot is unavailable",
+    ),
+]
 
 
 def test_real_snapshot_api_and_fts_integrity() -> None:

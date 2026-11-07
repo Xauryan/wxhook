@@ -81,7 +81,9 @@ def native_event(
     }
 
 
-def wait_until(predicate, timeout: float = 10.0) -> None:
+# Materializing through the reconcile loop into a full real-snapshot cache
+# (~4 GB) regularly takes more than 10 s.
+def wait_until(predicate, timeout: float = 120.0) -> None:
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
@@ -486,6 +488,7 @@ def test_ingest_requires_json_and_rejects_nonlocal_origin(
         assert local_origin.status_code == 201
 
 
+@pytest.mark.real_snapshot
 def test_replay_recovers_event_accepted_before_materialization(tmp_path: Path) -> None:
     repository = make_repository(tmp_path)
     before = repository.health()["message_count"]
@@ -502,6 +505,7 @@ def test_replay_recovers_event_accepted_before_materialization(tmp_path: Path) -
     assert any("replayrecoverytoken" in item["snippet"] for item in results["items"])
 
 
+@pytest.mark.real_snapshot
 def test_concurrent_message_identity_deduplication(tmp_path: Path) -> None:
     repository = make_repository(tmp_path)
     before = repository.health()["message_count"]
