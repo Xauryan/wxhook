@@ -38,6 +38,34 @@ class ReplyConfig(BaseModel):
     cooldown_seconds: int = Field(default=60, ge=0, le=600)
     confidence_threshold: float = Field(default=.9, ge=.8, le=1)
     max_reply_chars: int = Field(default=1200, ge=200, le=2400)
+    # @-mentioning the account counts as an explicit request, like /ask.
+    mention_trigger: bool = True
+    mention_names: list[str] = Field(default_factory=list, max_length=10)
+    reply_style: Literal['quote', 'plain'] = 'quote'
+    # Tried in order when the stage's own model fails to connect or errors.
+    fallback_profile_ids: list[str] = Field(default_factory=list, max_length=5)
+    fast_stages: bool = True
+    stale_check: bool = True
+    vision_profile_id: str | None = Field(default=None, min_length=1, max_length=64)
+    glossary: str = Field(default='', max_length=4000)
+    source_style: Literal['links', 'one_link', 'names'] = 'one_link'
+    faq_enabled: bool = True
+    faq_ttl_days: int = Field(default=7, ge=1, le=90)
+
+    @field_validator('mention_names')
+    @classmethod
+    def valid_mention_names(cls, values):
+        values = list(dict.fromkeys(value.strip() for value in values if value.strip()))
+        if any(len(value) > 40 for value in values):
+            raise ValueError('群内称呼每个最多 40 字')
+        return values
+
+    @field_validator('fallback_profile_ids')
+    @classmethod
+    def unique_fallbacks(cls, values):
+        if len(values) != len(set(values)) or any(not value or len(value) > 64 for value in values):
+            raise ValueError('备用模型必须唯一且有效')
+        return values
 
     @field_validator('local_question_pattern')
     @classmethod
@@ -106,3 +134,9 @@ class AnswerReview(BaseModel):
     version_consistent: bool
     confidence: float = Field(ge=0, le=1)
     reason: str = Field(max_length=500)
+
+
+class StaleCheck(BaseModel):
+    already_answered: bool
+    still_relevant: bool
+    reason: str = Field(default='', max_length=300)

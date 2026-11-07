@@ -13,6 +13,7 @@ class RetrievalConfig(BaseModel):
     chunk_chars: int = Field(default=1100, ge=300, le=10000)
     chunks_per_document: int = Field(default=3, ge=1, le=10)
     search_cache_seconds: int = Field(default=900, ge=0, le=86400)
+    time_budget_seconds: int = Field(default=40, ge=5, le=300)
     page_cache_seconds: int = Field(default=1800, ge=0, le=86400)
     wiki_cache_seconds: int = Field(default=86400, ge=0, le=604800)
     allow_unverified_sources: bool = False

@@ -215,9 +215,31 @@ class ModelBatch(BaseModel):
         return self
 
 
+class ImageInput(BaseModel):
+    mime: Literal['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+    data: str = Field(min_length=1, max_length=8_000_000)  # base64
+
+
 class ChatMessage(BaseModel):
     role: Literal['system', 'user', 'assistant']
     content: str
+    images: list[ImageInput] = Field(default_factory=list, max_length=4)
+
+    def wire(self, protocol):
+        """Provider wire format; images become protocol-specific content parts."""
+        if not self.images:
+            return {'role': self.role, 'content': self.content}
+        if protocol == 'anthropic':
+            parts = [{'type': 'image', 'source': {'type': 'base64', 'media_type': image.mime, 'data': image.data}}
+                     for image in self.images]
+            return {'role': self.role, 'content': [*parts, {'type': 'text', 'text': self.content}]}
+        if protocol == 'responses':
+            parts = [{'type': 'input_image', 'image_url': f'data:{image.mime};base64,{image.data}'}
+                     for image in self.images]
+            return {'role': self.role, 'content': [{'type': 'input_text', 'text': self.content}, *parts]}
+        parts = [{'type': 'image_url', 'image_url': {'url': f'data:{image.mime};base64,{image.data}'}}
+                 for image in self.images]
+        return {'role': self.role, 'content': [{'type': 'text', 'text': self.content}, *parts]}
 
 
 class Completion(BaseModel):

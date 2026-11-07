@@ -1,6 +1,7 @@
 from datetime import datetime
 import hashlib
 import json
+import re
 from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException
@@ -24,7 +25,12 @@ class ConversationContext:
                              (account, room, 'event:' + event_id)).fetchone()
         return row[0] if row else None
 
-    def load(self, account, room, ident, config, *, ask_prefix=False):
+    @staticmethod
+    def mentions(text, names):
+        """WeChat writes an @mention as '@name' followed by U+2005 (or a space at the end of input)."""
+        return any(re.search('@' + re.escape(name) + r'(?:\u2005|\s|$)', text) for name in names if name)
+
+    def load(self, account, room, ident, config, *, ask_prefix=False, assistant_names=()):
         anchor = self.message(account, room, ident)
         stamp = anchor['timestamp']
         with self.live.db() as db:
@@ -48,14 +54,19 @@ class ConversationContext:
             quoted = None
             if isinstance(reference, dict):
                 quoted = {'kind': reference.get('kind'), 'text': str(reference.get('content') or '')[:config.context_quote_chars]}
-            return {'message_id': record_id, 'time': datetime.fromtimestamp(timestamp, ZoneInfo('Asia/Shanghai')).isoformat(),
+            presented = {'message_id': record_id, 'time': datetime.fromtimestamp(timestamp, ZoneInfo('Asia/Shanghai')).isoformat(),
                     'speaker': speakers[sender], 'category': category, 'text': content[:config.context_message_chars],
                     'quote': quoted, 'is_self': bool(message.get('is_self') or sender == account)}
+            if quoted is not None and message.get('reference_from_username') == account:
+                presented['quote']['from_assistant'] = True
+            return presented
 
         previous = [present(json.loads(row['data']), row['id'], row['timestamp']) for row in reversed(rows)]
         current = present(anchor['message'], ident, stamp)
         if ask_prefix:
             current['text'] = '/ask ' + current['text']
+        if self.mentions(current['text'], assistant_names):
+            current['mentions_assistant'] = True
         context = {'group': room_row[0] if room_row else room, 'at': current['time'],
                    'policy': {'messages': config.context_messages, 'minutes': config.context_minutes,
                               'same_second': 'excluded' if config.exclude_same_second else 'earlier_ids',

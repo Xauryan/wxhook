@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ArrowDown, ArrowUp, ChevronDown, Settings2, X } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -19,6 +19,7 @@ import {
   SheetTitle,
 } from '@/components/ui/sheet'
 import { Switch } from '@/components/ui/switch'
+import { Textarea } from '@/components/ui/textarea'
 import type { ModelProfile } from '@/features/ai/api'
 import {
   modeNames,
@@ -134,6 +135,13 @@ export function ReplyTab({
           {modeNames[config.search_mode]} 检索 · 读取前 {config.context_minutes}{' '}
           分钟内最多 {config.context_messages} 条消息
         </p>
+        <p className='text-sm text-muted-foreground'>
+          /ask 开头的消息一定会回应
+          {config.mention_trigger === false
+            ? ''
+            : '；有人 @ 你或引用你的回答追问时，查到可靠答案才会回答'}
+          {config.reply_style === 'plain' ? '' : '，回答会引用提问的那条消息'}。
+        </p>
         {!config.enabled && (
           <p className='text-sm text-muted-foreground'>
             关闭真实回复时只记录、不发送，可以在“回放测试”里先验证效果。
@@ -176,7 +184,8 @@ export function ReplyTab({
                     <span className='block truncate text-sm'>{run.input}</span>
                     <span className='text-xs text-muted-foreground'>
                       {reasonText(run.reason)}
-                      {run.delivery_status && ` · ${run.delivery_status}`}
+                      {run.delivery_status &&
+                        ` · ${deliveryText(run.delivery_status, run.delivery_detail)}`}
                     </span>
                   </span>
                   <span className='shrink-0 text-xs text-muted-foreground'>
@@ -188,9 +197,78 @@ export function ReplyTab({
           </ul>
         )}
       </Panel>
+      {config.faq_enabled !== false && (
+        <FaqPanel account={account} room={room} />
+      )}
       <RunDetailSheet id={runId} onClose={() => setRunId('')} />
       {sheet}
     </div>
+  )
+}
+
+const deliveries: Record<string, string> = {
+  accepted: '已发送',
+  dispatching: '发送中',
+  unknown: '发送待核对',
+  failed: '发送失败',
+  cancelled: '配置已变，未发送',
+}
+function deliveryText(status: string, detail?: string) {
+  if (status === 'skipped') return detail || '未发送'
+  return deliveries[status] ?? status
+}
+
+function FaqPanel({ account, room }: { account: string; room: string }) {
+  const client = useQueryClient()
+  const faq = useQuery({
+    queryKey: ['reply-faq', account, room],
+    queryFn: () => replyApi.faq(account, room),
+    refetchInterval: 30_000,
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) => replyApi.deleteFaq(account, id),
+    onSuccess: () =>
+      client.invalidateQueries({ queryKey: ['reply-faq', account, room] }),
+  })
+  const items = faq.data?.items ?? []
+  return (
+    <Panel
+      title='常见问题库'
+      description='核验通过的回答会存在这里。之后有人问同样的问题，会直接复用、秒回，不再重新搜索。答错的可以删掉。'
+    >
+      <ErrorText error={faq.error ?? remove.error} />
+      {items.length === 0 ? (
+        <p className='text-sm text-muted-foreground'>
+          还没有收录的问题。群里有问题被成功回答后会自动加入。
+        </p>
+      ) : (
+        <ul className='divide-y'>
+          {items.map((item) => (
+            <li key={item.id} className='flex items-start gap-3 py-3'>
+              <div className='min-w-0 flex-1 space-y-1'>
+                <p className='text-sm font-medium'>{item.question}</p>
+                <p className='line-clamp-2 text-sm text-muted-foreground'>
+                  {item.answer}
+                </p>
+                <p className='text-xs text-muted-foreground'>
+                  {formatTime(item.created_at)} 收录 · 复用 {item.hits} 次
+                  {item.time_sensitive && ' · 时效性问题，1 天后过期'}
+                </p>
+              </div>
+              <Button
+                size='sm'
+                variant='ghost'
+                className='text-destructive'
+                disabled={remove.isPending}
+                onClick={() => remove.mutate(item.id)}
+              >
+                删除
+              </Button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
   )
 }
 
@@ -226,8 +304,21 @@ function ReplySettings({
       cooldown_seconds: 60,
       confidence_threshold: 0.9,
       max_reply_chars: 1200,
+      mention_trigger: true,
+      mention_names: [],
+      reply_style: 'quote',
+      fallback_profile_ids: [],
+      fast_stages: true,
+      stale_check: true,
+      vision_profile_id: null,
+      glossary: '',
+      source_style: 'one_link',
+      faq_enabled: true,
+      faq_ttl_days: 7,
     }
   )
+  const [names, setNames] = useState((config.mention_names ?? []).join('，'))
+  const fallbacks = config.fallback_profile_ids ?? []
   const update = <K extends keyof ReplyConfig>(key: K, value: ReplyConfig[K]) =>
     setConfig((previous) => ({ ...previous, [key]: value }))
   const decisions = config.decision_profile_ids ?? []
@@ -332,6 +423,226 @@ function ReplySettings({
             <p className='text-xs text-muted-foreground'>
               开启真实回复后 /ask
               始终回应，缺少依据时会说明无法确认或请求补充；普通提问要通过来源和答案核验才会回答。
+            </p>
+          </FieldGroup>
+
+          <FieldGroup
+            title='怎么触发和回复'
+            description='/ask 开头的消息总会得到回应。这个号是你本人的微信，大家 @ 你不一定是在提问，所以 @ 你或引用你的回答追问时，只有查到可靠答案才会回答，否则保持安静。'
+          >
+            <div className='flex items-center gap-3'>
+              <Switch
+                id='reply-mention'
+                checked={config.mention_trigger ?? true}
+                onCheckedChange={(value) => update('mention_trigger', value)}
+              />
+              <Label htmlFor='reply-mention'>
+                @ 我或引用我的回答时，跳过闲聊过滤直接查
+              </Label>
+            </div>
+            <div className='space-y-2'>
+              <Label htmlFor='reply-names'>群里还会怎么称呼我（可留空）</Label>
+              <Input
+                id='reply-names'
+                value={names}
+                placeholder='已自动使用微信名；改了群昵称时填在这里，多个用逗号分隔'
+                onChange={(event) => {
+                  setNames(event.target.value)
+                  update(
+                    'mention_names',
+                    event.target.value
+                      .split(/[,，、\s]+/)
+                      .map((name) => name.trim())
+                      .filter(Boolean)
+                      .slice(0, 10)
+                  )
+                }}
+              />
+            </div>
+            <div className='grid gap-4 sm:grid-cols-2'>
+              <div className='space-y-2'>
+                <Label htmlFor='reply-style'>回答方式</Label>
+                <select
+                  id='reply-style'
+                  className={selectStyle}
+                  value={config.reply_style ?? 'quote'}
+                  onChange={(event) =>
+                    update(
+                      'reply_style',
+                      event.target.value as ReplyConfig['reply_style']
+                    )
+                  }
+                >
+                  <option value='quote'>引用提问的那条消息</option>
+                  <option value='plain'>直接发送</option>
+                </select>
+              </div>
+              <div className='space-y-2'>
+                <Label htmlFor='reply-sources'>来源写法</Label>
+                <select
+                  id='reply-sources'
+                  className={selectStyle}
+                  value={config.source_style ?? 'one_link'}
+                  onChange={(event) =>
+                    update(
+                      'source_style',
+                      event.target.value as ReplyConfig['source_style']
+                    )
+                  }
+                >
+                  <option value='one_link'>附 1 条链接</option>
+                  <option value='names'>只写来源名称，不附链接</option>
+                  <option value='links'>附最多 3 条链接</option>
+                </select>
+              </div>
+            </div>
+          </FieldGroup>
+
+          <FieldGroup
+            title='速度与可靠性'
+            description='群里聊得快，回答慢了就没用了。这些选项让回答更快，也更不容易打扰大家。'
+          >
+            <div className='flex items-center gap-3'>
+              <Switch
+                id='reply-fast'
+                checked={config.fast_stages ?? true}
+                onCheckedChange={(value) => update('fast_stages', value)}
+              />
+              <Label htmlFor='reply-fast'>
+                问题解析和答案核验用低推理强度，加快回答
+              </Label>
+            </div>
+            <div className='flex items-center gap-3'>
+              <Switch
+                id='reply-stale'
+                checked={config.stale_check ?? true}
+                onCheckedChange={(value) => update('stale_check', value)}
+              />
+              <Label htmlFor='reply-stale'>
+                主动回答发出前，先看看是不是已经有人答了或话题已过
+              </Label>
+            </div>
+            <div className='space-y-2'>
+              <Label>备用模型（回答模型出错时按顺序换用）</Label>
+              {fallbacks.length > 0 && (
+                <div className='flex flex-wrap gap-2'>
+                  {fallbacks.map((id, index) => (
+                    <span
+                      key={id}
+                      className='flex items-center gap-1 rounded-full border py-0.5 ps-3 pe-1 text-sm'
+                    >
+                      {index + 1}. {profileName(profiles, id)}
+                      <Button
+                        type='button'
+                        size='icon'
+                        variant='ghost'
+                        className='size-6'
+                        aria-label={`移除备用模型 ${profileName(profiles, id)}`}
+                        onClick={() =>
+                          update(
+                            'fallback_profile_ids',
+                            fallbacks.filter((value) => value !== id)
+                          )
+                        }
+                      >
+                        <X />
+                      </Button>
+                    </span>
+                  ))}
+                </div>
+              )}
+              <select
+                aria-label='添加备用模型'
+                className={selectStyle}
+                value=''
+                disabled={fallbacks.length >= 5}
+                onChange={(event) => {
+                  if (event.target.value)
+                    update('fallback_profile_ids', [
+                      ...fallbacks,
+                      event.target.value,
+                    ])
+                }}
+              >
+                <option value=''>添加备用模型</option>
+                {models
+                  .filter(
+                    (profile) =>
+                      profile.id !== config.ai_profile_id &&
+                      !fallbacks.includes(profile.id)
+                  )
+                  .map((profile) => (
+                    <option key={profile.id} value={profile.id}>
+                      {profile.config.name}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className='space-y-2'>
+              <Label htmlFor='reply-vision'>看截图的模型</Label>
+              <select
+                id='reply-vision'
+                className={selectStyle}
+                value={config.vision_profile_id ?? ''}
+                onChange={(event) =>
+                  update('vision_profile_id', event.target.value || null)
+                }
+              >
+                <option value=''>不看截图</option>
+                {models.map((profile) => (
+                  <option key={profile.id} value={profile.id}>
+                    {profile.config.name}
+                  </option>
+                ))}
+              </select>
+              <p className='text-xs text-muted-foreground'>
+                选一个能识图的模型（如 GPT
+                系列）。问题附近的截图会先被转成文字描述，再用来理解和检索。DeepSeek
+                不能看图。
+              </p>
+            </div>
+          </FieldGroup>
+
+          <FieldGroup
+            title='本群黑话'
+            description='每行一条，例如“摸金 = 加页手记”“zz9 = 某战队选手”。只用来理解群友在说什么，不会当作答案的依据。'
+          >
+            <Textarea
+              aria-label='本群黑话'
+              className='min-h-28 text-sm'
+              maxLength={4000}
+              value={config.glossary ?? ''}
+              placeholder={'摸金 = 加页手记\n屠夫 = 监管者'}
+              onChange={(event) => update('glossary', event.target.value)}
+            />
+          </FieldGroup>
+
+          <FieldGroup title='常见问题库'>
+            <div className='flex items-center gap-3'>
+              <Switch
+                id='reply-faq'
+                checked={config.faq_enabled ?? true}
+                onCheckedChange={(value) => update('faq_enabled', value)}
+              />
+              <Label htmlFor='reply-faq'>
+                记住核验过的回答，同样的问题直接复用
+              </Label>
+            </div>
+            <div className='max-w-48 space-y-2'>
+              <Label htmlFor='reply-faq-days'>答案保留天数</Label>
+              <Input
+                id='reply-faq-days'
+                type='number'
+                min={1}
+                max={90}
+                value={config.faq_ttl_days ?? 7}
+                onChange={(event) =>
+                  update('faq_ttl_days', Number(event.target.value))
+                }
+              />
+            </div>
+            <p className='text-xs text-muted-foreground'>
+              活动、价格这类时效性问题只保留 1 天。
             </p>
           </FieldGroup>
 

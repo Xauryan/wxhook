@@ -190,7 +190,7 @@ class ReplyStore:
 
     def recent(self, account):
         with self.db() as db:
-            return [dict(row) for row in db.execute('''SELECT id,room,message_id,status,delivery_status,
+            return [dict(row) for row in db.execute('''SELECT id,room,message_id,status,delivery_status,delivery_detail,
                 json_extract(context,'$.current.text') input,json_extract(result,'$.answer') answer,
                 json_extract(result,'$.reason') reason,created_at FROM reply_runs
                 WHERE account=? AND origin='live' ORDER BY created_at DESC LIMIT 30''', (account,))]

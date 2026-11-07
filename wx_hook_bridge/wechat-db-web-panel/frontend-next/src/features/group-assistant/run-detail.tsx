@@ -112,9 +112,19 @@ function RunDetail({ id }: { id: string }) {
                 ))}
               </Step>
             )}
+            {result.images?.map((image) => (
+              <Step key={image.message_id} label='看截图'>
+                {image.text}
+              </Step>
+            ))}
             {result.plan && (
               <Step label='识别问题'>
                 {result.plan.question || result.plan.reason}
+              </Step>
+            )}
+            {result.faq && (
+              <Step label='常见问题'>
+                复用之前的回答：{result.faq.question}
               </Step>
             )}
             {result.searches?.length > 0 && (
@@ -127,6 +137,27 @@ function RunDetail({ id }: { id: string }) {
               </Step>
             )}
             {result.review && <Step label='核验'>{result.review.reason}</Step>}
+            {result.attempts?.some(
+              (attempt) => attempt.status === 'failed'
+            ) && (
+              <Step label='换用模型'>
+                {result.attempts.map((attempt, index) => (
+                  <p
+                    key={index}
+                    className={
+                      attempt.status === 'failed'
+                        ? 'text-destructive'
+                        : 'text-muted-foreground'
+                    }
+                  >
+                    {attempt.stage} · {attempt.profile_id} ·{' '}
+                    {attempt.status === 'completed'
+                      ? '完成'
+                      : `失败 ${attempt.detail ?? ''}`}
+                  </p>
+                ))}
+              </Step>
+            )}
             {result.retrieval_errors?.length > 0 && (
               <Step label='检索错误'>
                 {result.retrieval_errors.map((error, index) => (

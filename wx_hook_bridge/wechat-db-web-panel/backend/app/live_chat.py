@@ -30,12 +30,24 @@ from .favorites import Favorites, create_favorites_router
 from .moments import Moments, create_moments_router
 
 
+class SendQuote(BaseModel):
+    """The text message a reply quotes; every value comes from that message's stored row."""
+    model_config = ConfigDict(extra='forbid')
+    msg_id: str = Field(pattern=r'^-?[1-9]\d{0,19}$')
+    local_id: int = Field(gt=0, lt=2**31)
+    content: str = Field(max_length=2000)
+    sender: str = Field(min_length=1, max_length=240)
+    create_time: int = Field(gt=0, lt=2**31)
+    chat: str = Field(min_length=1, max_length=240)
+
+
 class SendText(BaseModel):
     model_config = ConfigDict(extra='forbid')
     account: str = Field(min_length=1, max_length=240)
     username: str = Field(min_length=1, max_length=240)
     text: str = Field(min_length=1, max_length=10000)
     request_id: UUID
+    quote: SendQuote | None = None
 
 
 class LiveChat:
@@ -599,7 +611,8 @@ class LiveChat:
     async def send(self, payload: SendText) -> dict:
         if not payload.text.strip() or '\x00' in payload.text:
             raise HTTPException(422,'消息不能为空或包含空字符')
-        fingerprint = hashlib.sha256(json.dumps([payload.username,payload.text]).encode()).hexdigest()
+        fingerprint = hashlib.sha256(json.dumps([payload.username,payload.text]
+            + ([payload.quote.model_dump()] if payload.quote else [])).encode()).hexdigest()
         request_id = str(payload.request_id)
         try:
             old = await asyncio.to_thread(self._outbox_fingerprint, payload.account, request_id)
@@ -627,7 +640,16 @@ class LiveChat:
             return self.receipt(payload.account, request_id)
         status, detail = 'unknown', '发送结果未知，请先在微信核对；系统不会自动重发'
         try:
-            result = await self.bridge('/api/sendTextMsg', {'wxid':payload.username,'msg':payload.text}, 35)
+            if payload.quote:
+                quote = payload.quote
+                result = await self.bridge('/api/sendQuoteMsg', {'wxid':payload.username,'msg':payload.text,
+                    'quotedMsgId':quote.msg_id,'quotedLocalId':quote.local_id,'quotedContent':quote.content,
+                    'quotedFrom':quote.sender,'quotedType':1,'createTime':quote.create_time,'quotedChat':quote.chat}, 35)
+                if result.get('code') != 1:
+                    # An explicit rejection sent nothing, so plain text cannot duplicate it.
+                    result = await self.bridge('/api/sendTextMsg', {'wxid':payload.username,'msg':payload.text}, 35)
+            else:
+                result = await self.bridge('/api/sendTextMsg', {'wxid':payload.username,'msg':payload.text}, 35)
             if result.get('code') == 1:
                 status, detail = 'accepted', '微信已受理请求，实际消息以实时回显为准'
             else:

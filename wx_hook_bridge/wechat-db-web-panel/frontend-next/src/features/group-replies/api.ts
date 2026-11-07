@@ -24,6 +24,7 @@ export type RetrievalConfig = {
   chunk_chars: number
   chunks_per_document: number
   search_cache_seconds: number
+  time_budget_seconds?: number
   page_cache_seconds: number
   wiki_cache_seconds: number
   allow_unverified_sources: boolean
@@ -52,6 +53,28 @@ export type ReplyConfig = Partial<Record<PromptKey, string | null>> & {
   cooldown_seconds: number
   confidence_threshold: number
   max_reply_chars: number
+  mention_trigger?: boolean
+  mention_names?: string[]
+  reply_style?: 'quote' | 'plain'
+  fallback_profile_ids?: string[]
+  fast_stages?: boolean
+  stale_check?: boolean
+  vision_profile_id?: string | null
+  glossary?: string
+  source_style?: 'links' | 'one_link' | 'names'
+  faq_enabled?: boolean
+  faq_ttl_days?: number
+}
+export type FAQEntry = {
+  id: string
+  question: string
+  answer: string
+  sources: { title: string; url: string; source_kind: string }[]
+  domain: string
+  time_sensitive: boolean
+  created_at: number
+  hits: number
+  last_hit_at: number | null
 }
 export type ReplyRule = {
   account: string
@@ -145,6 +168,14 @@ export type RunDetail = {
     searches: { provider: string; query: string; results: number }[]
     retrieval_errors: string[]
     review: { reason: string } | null
+    attempts?: {
+      stage: string
+      profile_id: string
+      status: string
+      detail?: string
+    }[]
+    images?: { message_id: number; text: string }[]
+    faq?: { id: string; question: string }
   } | null
 }
 export type ReplyStatus = {
@@ -163,6 +194,7 @@ export type ReplyStatus = {
     answer: string | null
     reason: string | null
     delivery_status: string
+    delivery_detail: string
   }[]
   running: boolean
   error: string | null
@@ -205,4 +237,15 @@ export const replyApi = {
   batch: (id: string) => request<Batch>(`/replays/${id}`),
   cancel: (id: string) => request<Batch>(`/replays/${id}/cancel`, {}),
   run: (id: string) => request<RunDetail>(`/runs/${id}`),
+  faq: (account: string, room: string) =>
+    request<{ items: FAQEntry[] }>(
+      `/faq?${new URLSearchParams({ account, room })}`
+    ),
+  deleteFaq: async (account: string, id: string) => {
+    const response = await fetch(
+      `${base}/group-replies/faq/${id}?${new URLSearchParams({ account })}`,
+      { method: 'DELETE' }
+    )
+    if (!response.ok) throw new Error(`删除失败（${response.status}）`)
+  },
 }

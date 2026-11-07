@@ -99,13 +99,21 @@ class BWIKISource:
     base_url = 'https://wiki.biligame.com/dwrg/'
     api_url = base_url + 'api.php'
 
+    # BWIKI answers 567 (and the usual 403/429) when it limits automated clients.
+    LIMITED_STATUSES = {403, 429, 567}
+    BACKOFF_SECONDS = 600
+
     def __init__(self, *, transport=None):
         self.transport = transport
         self._lock = asyncio.Lock()
         self._last_request = 0.0
+        self._paused_until = 0.0
 
     async def _get(self, params):
         async with self._lock:
+            if time.monotonic() < self._paused_until:
+                # Respect the site's limit instead of retrying into it; other sources still run.
+                raise RetrievalError('BWIKI 暂时限制访问，本次已跳过')
             delay = .5 - (time.monotonic() - self._last_request)
             if delay > 0:
                 await asyncio.sleep(delay)
@@ -114,6 +122,9 @@ class BWIKISource:
                 try:
                     response = await client.get(self.api_url, params={'format': 'json', **params},
                                                 headers={'User-Agent': 'WeChatKnowledge/1.0'})
+                    if response.status_code in self.LIMITED_STATUSES:
+                        self._paused_until = time.monotonic() + self.BACKOFF_SECONDS
+                        raise RetrievalError(f'BWIKI 返回 HTTP {response.status_code}，暂停读取 10 分钟')
                     if response.status_code != 200:
                         raise RetrievalError(f'BWIKI 返回 HTTP {response.status_code}')
                     data = response.json()

@@ -22,6 +22,7 @@ export const textProfiles = (profiles: ModelProfile[]) =>
 
 export const reasons: Record<string, string> = {
   supported: '有依据的回答',
+  faq: '复用常见问题答案',
   not_question: '缺少提问信号',
   empty_content: '没有可分析的文本',
   decision_unavailable: '决策服务暂不可用',

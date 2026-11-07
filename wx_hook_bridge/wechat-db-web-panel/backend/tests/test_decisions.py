@@ -79,9 +79,14 @@ def test_failure_moves_to_next_profile_but_valid_ignore_stops(tmp_path):
         asyncio.run(service.choose_chain([profiles[1]['id']], {}, '分类', CHOICES, revisions=revisions))
 
 
-@pytest.mark.parametrize('text', ['啥', '这个登不上去', '不命中也算', '帮看看', '？', '需要一份报名说明'])
+@pytest.mark.parametrize('text', ['这个登不上去', '不命中也算', '帮看看', '需要一份报名说明', '啥情况'])
 def test_permissive_local_filter_does_not_require_question_words(text):
     assert candidate_reason(engine_context(text)['current'], ReplyConfig(ai_profile_id='fixture')) == ''
+
+
+@pytest.mark.parametrize('text', ['？', '这？', '啥', '[发呆][发呆]', '……'])
+def test_local_filter_drops_punctuation_emoji_and_single_characters(text):
+    assert candidate_reason(engine_context(text)['current'], ReplyConfig(ai_profile_id='fixture')) == 'empty_content'
 
 
 def test_negative_decision_skips_planning_and_ask_bypasses_gate():

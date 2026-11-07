@@ -31,6 +31,9 @@ class LocalMessages:
                 CREATE TABLE live_messages(sequence INTEGER PRIMARY KEY,account TEXT,session TEXT,event_id TEXT,timestamp INTEGER,message TEXT);
                 INSERT INTO live_names VALUES ('self','room@chatroom','Fixture');''')
 
+    async def profile(self):
+        return {'username': 'self', 'display_name': 'Fixture Bot'}
+
     @contextmanager
     def db(self):
         db = sqlite3.connect(self.path)

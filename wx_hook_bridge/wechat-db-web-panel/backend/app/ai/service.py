@@ -6,6 +6,7 @@ from urllib.request import getproxies, proxy_bypass
 
 import httpx
 
+from .capabilities import capabilities
 from .models import ChatMessage, Completion, ProviderSettings
 from .store import AIStore
 from .errors import AIError
@@ -95,7 +96,7 @@ class OpenAICompatibleProvider:
             raise httpx.RemoteProtocolError('Responses stream ended before completion')
 
     def prepare_request(self, config, key, messages, json_output):
-        body = {'model': config.model, 'messages': [message.model_dump() for message in messages],
+        body = {'model': config.model, 'messages': [message.wire('chat_completions') for message in messages],
                 'stream': False, config.token_parameter: config.max_output_tokens}
         if config.temperature is not None:
             body['temperature'] = config.temperature
@@ -106,7 +107,7 @@ class OpenAICompatibleProvider:
             endpoint = '/responses'
             body = {'model': config.model, 'store': False, 'max_output_tokens': config.max_output_tokens,
                     'instructions': '\n\n'.join(message.content for message in messages if message.role == 'system'),
-                    'input': [message.model_dump() for message in messages if message.role != 'system']}
+                    'input': [message.wire('responses') for message in messages if message.role != 'system']}
             if config.temperature is not None:
                 body['temperature'] = config.temperature
             if json_output and config.json_mode:
@@ -118,7 +119,7 @@ class OpenAICompatibleProvider:
             endpoint = '/messages' if config.base_url.endswith('/v1') else '/v1/messages'
             body = {'model': config.model, 'max_tokens': config.max_output_tokens,
                     'system': '\n\n'.join(message.content for message in messages if message.role == 'system'),
-                    'messages': [message.model_dump() for message in messages if message.role != 'system']}
+                    'messages': [message.wire('anthropic') for message in messages if message.role != 'system']}
             if config.temperature is not None:
                 body['temperature'] = config.temperature
             headers = {'anthropic-version': '2023-06-01'}
@@ -228,7 +229,7 @@ class AIService:
 
     async def complete(self, profile_id: str, messages: list[ChatMessage], *, purpose: str,
                        json_output=False, expected_revision: int | None = None,
-                       max_output_tokens: int | None = None) -> Completion:
+                       max_output_tokens: int | None = None, reasoning_effort: str | None = None) -> Completion:
         config, key, revision = await asyncio.to_thread(self.store.get, profile_id)
         if config.decision_only:
             raise AIError('该连接用于决策分类，请选择能够生成文本的回答模型')
@@ -240,6 +241,10 @@ class AIService:
             if not 128 <= max_output_tokens <= 1048576:
                 raise AIError('输出长度设置无效')
             config = config.model_copy(update={'max_output_tokens': min(max_output_tokens, config.max_output_tokens)})
+        meta = capabilities(config.model)
+        if reasoning_effort and meta and reasoning_effort in meta['reasoning_efforts']:
+            # Per-call override for quick stages; only for models whose supported efforts are known.
+            config = config.model_copy(update={'reasoning_effort': reasoning_effort})
         started = time.monotonic()
         usage, status = {}, 'failed'
         try:

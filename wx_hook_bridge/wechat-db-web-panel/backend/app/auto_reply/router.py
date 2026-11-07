@@ -19,6 +19,16 @@ def create_reply_router(service):
     async def save_rule(payload: ReplyRuleEdit):
         return await service.save_rule(payload)
 
+    @router.get('/faq')
+    async def faq(account: str, room: str):
+        await service.live.check_account(account, force=True)
+        return {'items': service.faq.list(account, room)}
+
+    @router.delete('/faq/{ident}')
+    async def delete_faq(ident: str, account: str):
+        await service.live.check_account(account, force=True)
+        return service.faq.delete(account, ident)
+
     @router.get('/cases')
     async def cases(account: str, room: str):
         await service.live.check_account(account, force=True)

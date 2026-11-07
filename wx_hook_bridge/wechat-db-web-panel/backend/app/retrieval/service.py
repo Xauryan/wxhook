@@ -113,66 +113,98 @@ class Retriever:
                         source_kind(hit.url, hit.authority), hit.published_at, authority=hit.authority)
 
     async def retrieve(self, plan, mode, profile_id, revision, as_of, *, options=None, search_prompt=None):
+        """Search every source at once, then read the best pages at once, all within one time budget."""
         options = options or RetrievalConfig()
         result = RetrievalResult()
         started = time.monotonic()
-        hits = []
         titles = list(dict.fromkeys(plan.wiki_titles))[:options.wiki_titles]
         queries = list(dict.fromkeys(plan.queries or [plan.question]))[:options.search_queries]
-        if mode in {'bwiki', 'hybrid'} and plan.domain == 'identityv':
-            for title in titles:
-                try:
-                    result.documents.append(await self.wiki_page(title, as_of, options.wiki_cache_seconds))
-                    result.searches.append({'provider': 'bwiki', 'query': title, 'results': 1})
-                except RetrievalError as error:
+        use_wiki = mode in {'bwiki', 'hybrid'} and plan.domain == 'identityv'
+        # Wiki search results change slowly; keep them longer than general web searches.
+        wiki_search_ttl = max(options.search_cache_seconds, 6 * 3600) if options.search_cache_seconds else 0
+
+        async def run(jobs, share):
+            """Run (label, coroutine) jobs concurrently until `share` of the budget; return finished (label, value)."""
+            tasks = {asyncio.ensure_future(job): label for label, job in jobs}
+            if not tasks:
+                return []
+            until = started + options.time_budget_seconds * share
+            done, pending = await asyncio.wait(tasks, timeout=max(0, until - time.monotonic()))
+            for task in pending:
+                task.cancel()
+            if pending:
+                result.errors.append(f'检索超过 {options.time_budget_seconds} 秒，{len(pending)} 项未完成，已用现有资料')
+            finished = []
+            for task, label in tasks.items():
+                if task not in done:
+                    continue
+                error = task.exception()
+                if error is None:
+                    finished.append((label, task.result()))
+                elif isinstance(error, (RetrievalError, RuntimeError)):
                     result.errors.append(str(error))
-            for query in (titles or queries)[:options.search_queries]:
-                try:
-                    async def search_wiki(query=query):
-                        return [asdict(hit) for hit in await self.wiki.search(query, count=options.wiki_search_count)]
-                    found = await self._cached(['wiki-search', query, options.wiki_search_count], search_wiki, options.search_cache_seconds)
-                    hits.extend(SearchHit(**row) for row in found)
-                    result.searches.append({'provider': 'bwiki', 'query': query, 'results': len(found)})
-                except RetrievalError as error:
-                    result.errors.append(str(error))
+                else:
+                    raise error
+            return finished
+
+        async def search_wiki(query):
+            async def load():
+                return [asdict(hit) for hit in await self.wiki.search(query, count=options.wiki_search_count)]
+            return await self._cached(['wiki-search', query, options.wiki_search_count], load, wiki_search_ttl)
+
+        async def search_deepseek(query):
+            # Date syntax also applies in live processing. It limits future-dated articles.
+            bounded = query[:100] + ' before:' + (as_of + timedelta(days=1)).date().isoformat()
+            async def load():
+                return [asdict(hit) for hit in await self.deepseek.search(bounded,
+                    original_question=plan.question[:128], count=options.deepseek_count)]
+            return bounded, await self._cached(['deepseek-search', bounded, plan.question[:128], options.deepseek_count],
+                                               load, options.search_cache_seconds)
+
+        async def search_gpt():
+            async def load():
+                return [asdict(hit) for hit in await self.gpt.search(profile_id, plan.question,
+                    as_of=as_of, expected_revision=revision, prompt=search_prompt)]
+            return await self._cached(['gpt-search', profile_id, revision, plan.question, as_of.isoformat(), search_prompt],
+                                      load, options.search_cache_seconds)
+
+        jobs = []
+        if use_wiki:
+            jobs += [(('page', title), self.wiki_page(title, as_of, options.wiki_cache_seconds)) for title in titles]
+            jobs += [(('bwiki', query), search_wiki(query)) for query in (titles or queries)[:options.search_queries]]
         if mode in {'deepseek', 'hybrid'}:
-            for query in queries:
-                try:
-                    # Date syntax also applies in live processing. It limits future-dated articles.
-                    before = (as_of + timedelta(days=1)).date().isoformat()
-                    bounded = query[:100] + ' before:' + before
-                    async def search_deepseek(query=bounded):
-                        return [asdict(hit) for hit in await self.deepseek.search(query,
-                            original_question=plan.question[:128], count=options.deepseek_count)]
-                    found = await self._cached(['deepseek-search', bounded, plan.question[:128], options.deepseek_count], search_deepseek, options.search_cache_seconds)
-                    hits.extend(SearchHit(**row) for row in found)
-                    result.searches.append({'provider': 'deepseek', 'query': bounded, 'results': len(found)})
-                except (RetrievalError, RuntimeError) as error:
-                    result.errors.append(str(error))
+            jobs += [(('deepseek', query), search_deepseek(query)) for query in queries]
         if mode == 'gpt':
-            try:
-                async def search_gpt():
-                    return [asdict(hit) for hit in await self.gpt.search(profile_id, plan.question,
-                        as_of=as_of, expected_revision=revision, prompt=search_prompt)]
-                found = await self._cached(['gpt-search', profile_id, revision, plan.question, as_of.isoformat(), search_prompt], search_gpt, options.search_cache_seconds)
+            jobs.append((('gpt', plan.question), search_gpt()))
+        hits = []
+        # A stuck source must not starve page reading, so searches get only part of the budget.
+        for (kind, query), value in await run(jobs, .5):
+            if kind == 'page':
+                result.documents.append(value)
+                result.searches.append({'provider': 'bwiki', 'query': query, 'results': 1})
+            elif kind == 'deepseek':
+                bounded, found = value
                 hits.extend(SearchHit(**row) for row in found)
-                result.searches.append({'provider': 'gpt', 'query': plan.question, 'results': len(found)})
-            except (RetrievalError, RuntimeError) as error:
-                result.errors.append(str(error))
+                result.searches.append({'provider': 'deepseek', 'query': bounded, 'results': len(found)})
+            else:
+                hits.extend(SearchHit(**row) for row in value)
+                result.searches.append({'provider': kind, 'query': query, 'results': len(value)})
+
         seen = {(urlsplit(document.url).hostname or '') + urlsplit(document.url).path for document in result.documents}
         # Official sites and specialist wikis are read before other publishers.
         hits.sort(key=lambda hit: (source_kind(hit.url, hit.authority) not in {'official', 'community_wiki'}, -hit.score))
+        chosen = []
         for hit in hits:
             identity = (urlsplit(hit.url).hostname or '') + urlsplit(hit.url).path
-            if identity in seen or len(result.documents) >= options.max_documents:
+            if identity in seen or len(result.documents) + len(chosen) >= options.max_documents:
                 continue
             seen.add(identity)
             if source_kind(hit.url, hit.authority) == 'unverified' and not options.allow_unverified_sources:
                 continue
-            try:
-                result.documents.append(await self._fetch(hit, as_of, options))
-            except RetrievalError as error:
-                result.errors.append(str(error))
+            chosen.append(hit)
+        fetched = dict(await run([(index, self._fetch(hit, as_of, options)) for index, hit in enumerate(chosen)], .9))
+        result.documents.extend(fetched[index] for index in sorted(fetched))
+
         if mode in {'bwiki', 'hybrid'}:
             # Character pages name skill subpages. Read relevant subpages with the same time bound.
             candidates = []
@@ -185,14 +217,15 @@ class Retriever:
                     score = sum(char in plan.question for char in skill)
                     candidates.append((score, skill))
             known_titles = {document.title for document in result.documents}
+            subpages = []
             for _, title in sorted(candidates, reverse=True):
-                if title in known_titles or len(result.documents) >= options.max_wiki_documents:
+                if title in known_titles or len(result.documents) + len(subpages) >= options.max_wiki_documents:
                     continue
                 known_titles.add(title)
-                try:
-                    result.documents.append(await self.wiki_page(title, as_of, options.wiki_cache_seconds))
-                except RetrievalError as error:
-                    result.errors.append(str(error))
+                subpages.append(title)
+            found = dict(await run([(index, self.wiki_page(title, as_of, options.wiki_cache_seconds))
+                                    for index, title in enumerate(subpages)], 1))
+            result.documents.extend(found[index] for index in sorted(found))
         result.elapsed_ms = round((time.monotonic() - started) * 1000)
         return result
 
