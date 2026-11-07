@@ -1,6 +1,12 @@
 import type { ReplyRule } from '@/features/group-replies/api'
 import type { ReportRule } from '@/features/group-reports/api'
-import type { ModelConfig, ModelProfile } from './api'
+import type {
+  ModelCapabilities,
+  ModelConfig,
+  ModelProfile,
+  ModelSettings,
+  Provider,
+} from './api'
 
 const purposes: Record<string, string> = {
   'group_report.topics': '群日报 · 话题',
@@ -45,4 +51,49 @@ export function modelUsage(reports: ReportRule[], replies: ReplyRule[]) {
     )
   }
   return usage
+}
+
+export const suggested: Partial<Record<Provider['config']['kind'], string>> = {
+  deepseek: 'deepseek-flash',
+  openai: 'gpt-6-astra',
+}
+
+export function modelFormats(kind: Provider['config']['kind']) {
+  const text: [ModelConfig['api_format'], string][] = [
+    ['auto', '文本生成（自动选择协议）'],
+  ]
+  if (kind === 'compatible')
+    text.push(
+      ['responses', '文本生成 · OpenAI Responses'],
+      ['chat_completions', '文本生成 · OpenAI Chat Completions'],
+      ['anthropic', '文本生成 · Anthropic Messages']
+    )
+  if (kind === 'openai' || kind === 'compatible')
+    for (const [value, label] of Object.entries(decisionFormats))
+      if (kind === 'compatible' || value === 'openai_decisions')
+        text.push([value as ModelConfig['api_format'], `消息过滤 · ${label}`])
+  return text
+}
+
+export function newModel(
+  model: string,
+  catalog: Record<string, ModelCapabilities>,
+  apiFormat: ModelConfig['api_format'] = 'auto'
+): ModelSettings {
+  const decision = apiFormat in decisionFormats
+  return {
+    label: null,
+    model,
+    api_format: apiFormat,
+    reasoning_effort: null,
+    enabled: true,
+    timeout_seconds: 120,
+    max_output_tokens: decision
+      ? 4096
+      : (catalog[model]?.max_output_tokens ?? 32768),
+    context_chars: null,
+    token_parameter: 'max_tokens',
+    json_mode: false,
+    temperature: null,
+  }
 }

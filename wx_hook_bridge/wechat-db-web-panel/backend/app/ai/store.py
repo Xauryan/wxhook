@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import sqlite3
 import time
@@ -208,6 +210,35 @@ class AIStore:
                        'updated_at=excluded.updated_at,provider_id=excluded.provider_id',
                        (ident, edit.revision + 1, edit.config.model_dump_json(), time.time(), edit.provider_id))
             return self._public_by_id(db, ident)
+
+    def connection(self, ident: str):
+        """Provider endpoint and plaintext key, for provider-level calls such as listing models."""
+        with self.db() as db:
+            row = self._provider(db, ident)
+        if row is None:
+            raise AIConfigurationError(404, '供应商不存在')
+        key = self.secret_codec(row['secret'], decrypt=True).decode() if row['secret'] else ''
+        return ProviderSettings.model_validate_json(row['config']), key
+
+    def add_models(self, provider_id: str, models: list[ModelSettings]):
+        """Add several models at once; ones already listed under the provider are skipped."""
+        with self.db() as db:
+            db.execute('BEGIN IMMEDIATE')
+            if self._provider(db, provider_id) is None:
+                raise AIConfigurationError(404, '供应商不存在')
+            existing = {(row['model'], row['api_format']) for row in (
+                ModelSettings.model_validate_json(item['config']).model_dump() for item in
+                db.execute('SELECT config FROM ai_profiles WHERE provider_id=? AND deleted=0', (provider_id,)))}
+            created = []
+            for model in models:
+                if (model.model, model.api_format) in existing:
+                    continue
+                existing.add((model.model, model.api_format))
+                ident = uuid4().hex
+                db.execute('INSERT INTO ai_profiles(id,revision,config,secret,updated_at,deleted,provider_id) VALUES (?,1,?,NULL,?,0,?)',
+                           (ident, model.model_dump_json(), time.time(), provider_id))
+                created.append(self._public_by_id(db, ident))
+            return created
 
     def save(self, ident: str | None, edit: ProfileEdit):
         """Flat compatibility API: one call edits a model together with its provider's connection."""

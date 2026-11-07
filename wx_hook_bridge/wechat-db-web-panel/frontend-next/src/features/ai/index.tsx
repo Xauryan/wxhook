@@ -29,6 +29,7 @@ import { formatTime } from '@/features/group-assistant/utils'
 import { replyApi } from '@/features/group-replies/api'
 import { reportApi } from '@/features/group-reports/api'
 import { aiApi, providerKinds, type ModelProfile, type Provider } from './api'
+import { ModelPicker } from './model-picker'
 import { ModelSheet } from './model-sheet'
 import { ProviderSheet } from './provider-sheet'
 import { decisionFormats, modelName, modelUsage, purposeName } from './utils'
@@ -64,6 +65,7 @@ export function AIPage() {
     provider: Provider
     profile?: ModelProfile
   } | null>(null)
+  const [picker, setPicker] = useState<Provider | null>(null)
   const [removing, setRemoving] = useState<Removal | null>(null)
   const [results, setResults] = useState<Record<string, TestResult>>({})
   const refresh = () => client.invalidateQueries({ queryKey: ['ai-profiles'] })
@@ -87,6 +89,17 @@ export function AIPage() {
       })
       void refresh()
     },
+    onError: (error: Error, id) =>
+      report(id, { ok: false, text: error.message }),
+  })
+  const check = useMutation({
+    mutationFn: aiApi.discoverModels,
+    onMutate: (id) => report(id, { ok: true, text: '检测中…' }),
+    onSuccess: (result, id) =>
+      report(id, {
+        ok: true,
+        text: `连接正常 · 供应商提供 ${result.models.length} 个模型 · ${(result.elapsed_ms / 1000).toFixed(1)} 秒`,
+      }),
     onError: (error: Error, id) =>
       report(id, { ok: false, text: error.message }),
   })
@@ -174,7 +187,17 @@ export function AIPage() {
                   <Button
                     size='sm'
                     variant='outline'
-                    onClick={() => setModelSheet({ provider })}
+                    disabled={
+                      check.isPending && check.variables === provider.id
+                    }
+                    onClick={() => check.mutate(provider.id)}
+                  >
+                    检测连接
+                  </Button>
+                  <Button
+                    size='sm'
+                    variant='outline'
+                    onClick={() => setPicker(provider)}
                   >
                     <Plus /> 添加模型
                   </Button>
@@ -310,7 +333,21 @@ export function AIPage() {
           onSaved={(provider, created) => {
             setProviderSheet(null)
             void refresh()
-            if (created) setModelSheet({ provider })
+            if (created) setPicker(provider)
+          }}
+        />
+      )}
+      {picker && status.data && (
+        <ModelPicker
+          open
+          provider={picker}
+          existing={profiles.filter((item) => item.provider_id === picker.id)}
+          catalog={status.data.catalog}
+          onOpenChange={(open) => !open && setPicker(null)}
+          onAdded={(count) => {
+            report(picker.id, { ok: true, text: `已添加 ${count} 个模型` })
+            setPicker(null)
+            void refresh()
           }}
         />
       )}

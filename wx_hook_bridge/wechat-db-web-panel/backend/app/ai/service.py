@@ -6,9 +6,58 @@ from urllib.request import getproxies, proxy_bypass
 
 import httpx
 
-from .models import ChatMessage, Completion
+from .models import ChatMessage, Completion, ProviderSettings
 from .store import AIStore
 from .errors import AIError
+
+
+def proxy_for(base_url, transport=None):
+    """System HTTPS proxy for remote endpoints; local services and bypassed hosts connect directly."""
+    host = urlsplit(base_url).hostname
+    if transport is None and host not in {'localhost', '127.0.0.1', '::1'} and not proxy_bypass(host):
+        return getproxies().get('https')
+    return None
+
+
+async def list_provider_models(provider: ProviderSettings, key: str, transport=None):
+    """Read the model ids a provider exposes through its OpenAI or Anthropic style /models API."""
+    base = provider.base_url
+    if provider.kind == 'anthropic':
+        url = base + ('/models' if base.endswith('/v1') else '/v1/models')
+        headers = {'anthropic-version': '2023-06-01', **({'x-api-key': key} if key else {})}
+        params = {'limit': 1000}
+    else:
+        url, headers, params = base + '/models', ({'Authorization': f'Bearer {key}'} if key else {}), {}
+    started = time.monotonic()
+    async with httpx.AsyncClient(timeout=30, follow_redirects=False, transport=transport,
+                                 proxy=proxy_for(base, transport), trust_env=False) as client:
+        try:
+            response = await client.get(url, headers=headers, params=params)
+        except httpx.TimeoutException:
+            raise AIError('读取模型列表超时，请检查接口地址与网络') from None
+        except httpx.HTTPError:
+            raise AIError('无法连接供应商接口，请检查接口地址与网络') from None
+    if response.status_code in {401, 403}:
+        raise AIError('密钥无效，或没有读取模型列表的权限')
+    if response.status_code in {404, 405}:
+        raise AIError('该服务不提供模型列表接口，请手动填写模型名')
+    if response.status_code != 200:
+        raise AIError(f'读取模型列表失败（HTTP {response.status_code}）')
+    if len(response.content) > 4 * 1024 * 1024:
+        raise AIError('模型列表响应过大')
+    try:
+        payload = response.json()
+        items = payload if isinstance(payload, list) else payload.get('data') or payload.get('models') or []
+        models = {}
+        for item in items:
+            ident = item if isinstance(item, str) else item.get('id') or item.get('name')
+            if isinstance(ident, str) and ident.strip() and len(ident) <= 120:
+                name = item.get('display_name') if isinstance(item, dict) else None
+                models[ident.strip()] = {'id': ident.strip(), 'name': name if isinstance(name, str) else None}
+    except (ValueError, AttributeError, TypeError):
+        raise AIError('模型列表格式无法识别，请手动填写模型名') from None
+    return {'models': sorted(models.values(), key=lambda item: item['id'])[:2000],
+            'elapsed_ms': round((time.monotonic() - started) * 1000)}
 
 
 class OpenAICompatibleProvider:
@@ -81,10 +130,7 @@ class OpenAICompatibleProvider:
 
     async def complete(self, config, key, messages, *, json_output=False):
         endpoint, body, headers = self.prepare_request(config, key, messages, json_output)
-        host = urlsplit(config.base_url).hostname
-        proxy = None
-        if self.transport is None and host not in {'localhost', '127.0.0.1', '::1'} and not proxy_bypass(host):
-            proxy = getproxies().get('https')
+        proxy = proxy_for(config.base_url, self.transport)
         async with httpx.AsyncClient(timeout=config.timeout_seconds, follow_redirects=False,
                                      transport=self.transport, proxy=proxy, trust_env=False) as client:
             for attempt in range(3):
@@ -169,11 +215,16 @@ class DeepSeekProvider(OpenAICompatibleProvider):
 
 
 class AIService:
-    def __init__(self, store: AIStore, provider=None):
+    def __init__(self, store: AIStore, provider=None, transport=None):
         self.store = store
         self.provider = provider
+        self.transport = transport
         self.providers = {'deepseek': DeepSeekProvider(), 'default': OpenAICompatibleProvider()}
         self._slots = asyncio.Semaphore(3)
+
+    async def list_models(self, provider_id: str):
+        provider, key = await asyncio.to_thread(self.store.connection, provider_id)
+        return await list_provider_models(provider, key, self.transport)
 
     async def complete(self, profile_id: str, messages: list[ChatMessage], *, purpose: str,
                        json_output=False, expected_revision: int | None = None,

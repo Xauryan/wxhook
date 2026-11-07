@@ -28,29 +28,7 @@ import {
   type ModelSettings,
   type Provider,
 } from './api'
-import { decisionFormats } from './utils'
-
-const suggested: Partial<Record<Provider['config']['kind'], string>> = {
-  deepseek: 'deepseek-flash',
-  openai: 'gpt-6-astra',
-}
-
-function formats(kind: Provider['config']['kind']) {
-  const text: [ModelConfig['api_format'], string][] = [
-    ['auto', '文本生成（自动选择协议）'],
-  ]
-  if (kind === 'compatible')
-    text.push(
-      ['responses', '文本生成 · OpenAI Responses'],
-      ['chat_completions', '文本生成 · OpenAI Chat Completions'],
-      ['anthropic', '文本生成 · Anthropic Messages']
-    )
-  if (kind === 'openai' || kind === 'compatible')
-    for (const [value, label] of Object.entries(decisionFormats))
-      if (kind === 'compatible' || value === 'openai_decisions')
-        text.push([value as ModelConfig['api_format'], `消息过滤 · ${label}`])
-  return text
-}
+import { decisionFormats, modelFormats, newModel, suggested } from './utils'
 
 export function ModelSheet({
   open,
@@ -67,21 +45,8 @@ export function ModelSheet({
   onOpenChange: (open: boolean) => void
   onSaved: () => void
 }) {
-  const initialModel = suggested[provider.config.kind] ?? ''
   const [config, setConfig] = useState<ModelSettings>(
-    profile?.model ?? {
-      label: null,
-      model: initialModel,
-      api_format: 'auto',
-      reasoning_effort: null,
-      enabled: true,
-      timeout_seconds: 120,
-      max_output_tokens: catalog[initialModel]?.max_output_tokens ?? 32768,
-      context_chars: null,
-      token_parameter: 'max_tokens',
-      json_mode: false,
-      temperature: null,
-    }
+    profile?.model ?? newModel(suggested[provider.config.kind] ?? '', catalog)
   )
   const update = <K extends keyof ModelSettings>(
     field: K,
@@ -176,7 +141,7 @@ export function ModelSheet({
                   )
                 }
               >
-                {formats(provider.config.kind).map(([value, label]) => (
+                {modelFormats(provider.config.kind).map(([value, label]) => (
                   <option key={value} value={value}>
                     {label}
                   </option>

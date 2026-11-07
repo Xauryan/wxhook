@@ -204,6 +204,17 @@ class ModelEdit(BaseModel):
         return self
 
 
+class ModelBatch(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    models: list[ModelSettings] = Field(min_length=1, max_length=100)
+
+    @model_validator(mode='after')
+    def validate_limits(self):
+        for model in self.models:
+            check_model_limits(model.model, model.max_output_tokens, model.reasoning_effort)
+        return self
+
+
 class ChatMessage(BaseModel):
     role: Literal['system', 'user', 'assistant']
     content: str

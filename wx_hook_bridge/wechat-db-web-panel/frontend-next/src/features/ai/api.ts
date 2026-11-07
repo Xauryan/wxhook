@@ -45,6 +45,7 @@ export type Provider = {
   api_key_set: boolean
   updated_at: number
 }
+export type DiscoveredModel = { id: string; name: string | null }
 export type ModelSettings = Omit<
   ModelConfig,
   'name' | 'base_url' | 'provider' | 'search_fetch'
@@ -135,6 +136,17 @@ export const aiApi = {
       id ? `/models/${id}` : '/models',
       id ? 'PUT' : 'POST',
       { revision, provider_id: providerId, config }
+    ),
+  discoverModels: (providerId: string) =>
+    request<{ models: DiscoveredModel[]; elapsed_ms: number }>(
+      `/providers/${providerId}/discover-models`,
+      'POST'
+    ),
+  addModels: (providerId: string, models: ModelSettings[]) =>
+    request<{ items: ModelProfile[] }>(
+      `/providers/${providerId}/models`,
+      'POST',
+      { models }
     ),
   test: (id: string) =>
     request<{

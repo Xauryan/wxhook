@@ -1,10 +1,12 @@
+import asyncio
 import sqlite3
 
 from fastapi import FastAPI
+import httpx
 from fastapi.testclient import TestClient
 import pytest
 
-from backend.app.ai.errors import AIConfigurationError
+from backend.app.ai.errors import AIConfigurationError, AIError
 from backend.app.ai.models import ModelEdit, ModelProfile, ModelSettings, ProviderEdit, ProviderSettings
 from backend.app.ai.router import create_ai_router
 from backend.app.ai.service import AIService
@@ -111,3 +113,55 @@ def test_provider_and_model_endpoints_never_echo_keys(tmp_path):
         assert 'fixture-private-key' not in client.get('/api/ai/profiles').text
         removed = client.delete(f"/api/ai/providers/{created.json()['id']}", params={'revision': 1})
         assert removed.status_code == 200
+
+
+def discovery_service(tmp_path, kind, base_url, handler):
+    store = AIStore(tmp_path / 'ai.sqlite', secret_codec=codec)
+    created = store.save_provider(None, ProviderEdit(config=provider(kind=kind, base_url=base_url), api_key='fixture-key'))
+    return AIService(store, transport=httpx.MockTransport(handler)), created['id']
+
+
+@pytest.mark.parametrize('kind,base_url,path,auth', [
+    ('openai', 'https://relay.invalid/v1', '/v1/models', ('authorization', 'Bearer fixture-key')),
+    ('deepseek', 'https://api.deepseek.invalid', '/models', ('authorization', 'Bearer fixture-key')),
+    ('anthropic', 'https://claude.invalid/v1', '/v1/models', ('x-api-key', 'fixture-key')),
+])
+def test_discover_models_uses_provider_endpoint_and_credentials(tmp_path, kind, base_url, path, auth):
+    seen = []
+    def handle(request):
+        seen.append(request)
+        return httpx.Response(200, json={'data': [{'id': 'model-b'}, {'id': 'model-a', 'display_name': 'Model A'},
+                                                  {'id': 'model-a'}, {'object': 'no id'}]})
+    service, ident = discovery_service(tmp_path, kind, base_url, handle)
+    result = asyncio.run(service.list_models(ident))
+    assert [item['id'] for item in result['models']] == ['model-a', 'model-b']
+    assert seen[0].url.path == path and seen[0].headers[auth[0]] == auth[1]
+    assert (seen[0].url.params.get('limit') == '1000') == (kind == 'anthropic')
+
+
+@pytest.mark.parametrize('status,message', [(401, '密钥无效'), (404, '手动填写'), (500, 'HTTP 500')])
+def test_discover_models_explains_failures_without_echoing_body(tmp_path, status, message):
+    service, ident = discovery_service(tmp_path, 'openai', 'https://relay.invalid/v1',
+                                       lambda request: httpx.Response(status, text='upstream secret detail'))
+    with pytest.raises(AIError, match=message) as error:
+        asyncio.run(service.list_models(ident))
+    assert 'upstream secret detail' not in str(error.value)
+
+
+def test_batch_add_skips_existing_models_and_endpoints_work(tmp_path):
+    handler = lambda request: httpx.Response(200, json={'data': [{'id': 'sol'}, {'id': 'astra'}]})
+    service, ident = discovery_service(tmp_path, 'openai', 'https://relay.invalid/v1', handler)
+    service.store.save_model(None, ModelEdit(provider_id=ident, config=ModelSettings(model='sol')))
+    app = FastAPI()
+    app.include_router(create_ai_router(service))
+    with TestClient(app) as client:
+        found = client.post(f'/api/ai/providers/{ident}/discover-models')
+        assert found.status_code == 200 and len(found.json()['models']) == 2
+        added = client.post(f'/api/ai/providers/{ident}/models', json={'models': [
+            {'model': 'sol'}, {'model': 'astra'}, {'model': 'astra'},
+            {'model': 'luna', 'api_format': 'openai_decisions'}]})
+        assert added.status_code == 200
+        assert [item['model']['model'] for item in added.json()['items']] == ['astra', 'luna']
+        assert added.json()['items'][1]['decision_only']
+        assert client.post(f'/api/ai/providers/{ident}/models', json={'models': []}).status_code == 422
+    assert len(service.store.list()['profiles']) == 3

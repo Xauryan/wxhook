@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
 
 from ..local_requests import require_local
-from .models import ChatMessage, ModelEdit, ProfileEdit, ProviderEdit
+from .models import ChatMessage, ModelBatch, ModelEdit, ProfileEdit, ProviderEdit
 from .capabilities import MODEL_CAPABILITIES
 from .service import AIError
 from .tool_store import ToolEdit
@@ -75,6 +75,17 @@ def create_ai_router(service, tool_store=None, search_tools=None):
     @router.delete('/providers/{ident}')
     async def delete_provider(ident: str, revision: int):
         return await asyncio.to_thread(service.store.delete_provider, ident, revision)
+
+    @router.post('/providers/{ident}/discover-models')
+    async def discover_models(ident: str):
+        try:
+            return await service.list_models(ident)
+        except AIError as error:
+            raise HTTPException(error.status_code, str(error)) from None
+
+    @router.post('/providers/{ident}/models')
+    async def add_models(ident: str, payload: ModelBatch):
+        return {'items': await asyncio.to_thread(service.store.add_models, ident, payload.models)}
 
     @router.post('/models')
     async def create_model(payload: ModelEdit):
