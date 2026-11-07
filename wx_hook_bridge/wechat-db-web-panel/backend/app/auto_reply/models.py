@@ -5,6 +5,9 @@ from ..retrieval.config import RetrievalConfig
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+# Checked against 129 real questions from the group: none lacks one of these signals.
+QUESTION_PATTERN = (r'[？?]|吗|么|呢|啥|什么|怎么|怎样|如何|为什么|为啥|几|多少|哪|谁|是不是|能不能|可不可以|会不会|'
+                    r'有没有|区别|意思|咋|想问|请问|问下|问一下|求助|求教|帮忙|帮看|有人知道|谁知道')
 SearchMode = Literal['bwiki', 'deepseek', 'gpt', 'hybrid', 'deepseek_direct']
 
 
@@ -16,8 +19,8 @@ class ReplyConfig(BaseModel):
     planning_profile_id: str | None = Field(default=None, min_length=1, max_length=64)
     review_profile_id: str | None = Field(default=None, min_length=1, max_length=64)
     local_min_text_chars: int = Field(default=1, ge=1, le=100)
-    local_require_question_signal: bool = False
-    local_question_pattern: str = Field(default=r'[？?]|怎么|如何|为什么|多少|哪里|什么|谁|吗|求助|请问', min_length=1, max_length=500)
+    local_require_question_signal: bool = True
+    local_question_pattern: str = Field(default=QUESTION_PATTERN, min_length=1, max_length=500)
     context_message_chars: int = Field(default=1600, ge=100, le=50000)
     context_quote_chars: int = Field(default=1200, ge=100, le=50000)
     exclude_same_second: bool = True

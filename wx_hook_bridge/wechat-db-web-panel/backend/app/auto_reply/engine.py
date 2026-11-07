@@ -28,6 +28,11 @@ FAST_STAGES = {'plan', 'verify'}
 # An @mention is '@name' then U+2005, or whitespace / end of text when typed by hand.
 MENTION = re.compile(r'@[^\s\u2005@]{1,40}(?:\u2005|\s|$)')
 NOISE = re.compile(r'\[[^\[\]]{1,8}\]|[\W_]+', re.UNICODE)
+# Inviting people to play together; a message that also asks how/what something works is still a question.
+RECRUIT = re.compile(r'有没有人|有人(?:[打玩排来]|一起|开黑|上车|组队|在吗)|还有人|谁来|来人|缺人|组队|开黑|上车|'
+                     r'[双二三四五]排|有无排位|加我|(?:你|谁)(?:打|来|玩|排)')
+KNOWLEDGE = re.compile(r'知道|懂|怎么|如何|为什么|为啥|什么|多少|哪|区别|意思|机制|技能|版本|攻略')
+SHORT_CHAT = 5
 
 
 def is_forced(text):
@@ -65,7 +70,16 @@ def candidate_reason(current, config):
     meaningful = NOISE.sub('', text)
     if len(meaningful) < max(2, config.local_min_text_chars):
         return 'empty_content'
-    if config.local_require_question_signal and not re.search(config.local_question_pattern, text):
+    # Clear-cut chat is dropped here, before any model call: talking to another member,
+    # inviting people to play, or a few words with no question in them.
+    if MENTION.search(text):
+        return 'addressed_other'
+    if RECRUIT.search(text) and not KNOWLEDGE.search(text):
+        return 'coordination'
+    has_question = re.search(config.local_question_pattern, text)
+    if len(meaningful) <= SHORT_CHAT and not has_question:
+        return 'too_short'
+    if config.local_require_question_signal and not has_question:
         return 'not_question'
     return ''
 
@@ -189,8 +203,10 @@ class ReplyEngine:
                     result['decision'] = {'attempts': error.attempts}
                     return finish('decision_unavailable', str(error))
                 result['decision'] = decision
-                if decision['choice'] == 'ignore' and decision['probabilities']['ignore'] >= config.decision_skip_threshold:
-                    return finish('not_actionable', '决策模型判定为明确的非求助消息')
+                # Ordinary chat goes on only when the filter calls it a question: "ignore" and "unclear"
+                # verdicts almost never end in an answer and each costs a planning call.
+                if decision['choice'] != 'question' or decision['probabilities'].get('ignore', 0) >= config.decision_skip_threshold:
+                    return finish('not_actionable', '过滤模型判定为闲聊或不确定，不是在求助')
             plan = await call(config.plan_prompt or PLAN_PROMPT,
                               with_glossary({**context, 'request': 'explicit' if explicit else 'proactive'}), QueryPlan, 'plan')
             result['plan'] = plan.model_dump()

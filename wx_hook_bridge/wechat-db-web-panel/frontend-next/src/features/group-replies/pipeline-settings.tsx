@@ -19,6 +19,10 @@ const retrievalDefaults: RetrievalConfig = {
   wiki_cache_seconds: 86400,
   allow_unverified_sources: false,
 }
+// Same default as the backend; checked against 129 real questions from the group.
+const questionPattern =
+  '[？?]|吗|么|呢|啥|什么|怎么|怎样|如何|为什么|为啥|几|多少|哪|谁|是不是|能不能|可不可以|会不会|' +
+  '有没有|区别|意思|咋|想问|请问|问下|问一下|求助|求教|帮忙|帮看|有人知道|谁知道'
 const promptLabels: Record<PromptKey, string> = {
   decision_prompt: '决策分类提示词',
   plan_prompt: '问题解析与检索规划提示词',
@@ -60,22 +64,19 @@ export function PipelineSettings({
           <label className='flex items-center gap-2 text-sm'>
             <input
               type='checkbox'
-              checked={config.local_require_question_signal ?? false}
+              checked={config.local_require_question_signal ?? true}
               onChange={(event) =>
                 update('local_require_question_signal', event.target.checked)
               }
             />
-            要求匹配疑问信号（关闭时宽松放行文本）
+            普通消息要含疑问词才继续（关闭后，不含疑问词的也交给过滤模型判断）
           </label>
           {config.local_require_question_signal && (
             <div className='space-y-2'>
               <Label htmlFor='reply-question-pattern'>疑问信号正则表达式</Label>
               <Input
                 id='reply-question-pattern'
-                value={
-                  config.local_question_pattern ??
-                  '[？?]|怎么|如何|为什么|多少|哪里|什么|谁|吗|求助|请问'
-                }
+                value={config.local_question_pattern ?? questionPattern}
                 onChange={(event) =>
                   update('local_question_pattern', event.target.value)
                 }

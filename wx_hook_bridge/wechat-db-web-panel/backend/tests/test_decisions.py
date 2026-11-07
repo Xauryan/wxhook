@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from types import SimpleNamespace
 
 import httpx
@@ -10,7 +11,7 @@ from backend.app.ai.models import ModelProfile, ProfileEdit
 from backend.app.ai.service import AIService
 from backend.app.ai.store import AIStore
 from backend.app.auto_reply.engine import ReplyEngine, candidate_reason
-from backend.app.auto_reply.models import ReplyConfig
+from backend.app.auto_reply.models import QUESTION_PATTERN, ReplyConfig
 from backend.app.auto_reply.store import ReplyStore
 from backend.tests.test_ai import codec
 from backend.tests.test_group_replies import ModelFixture, SourceFixture, engine_context
@@ -79,9 +80,24 @@ def test_failure_moves_to_next_profile_but_valid_ignore_stops(tmp_path):
         asyncio.run(service.choose_chain([profiles[1]['id']], {}, '分类', CHOICES, revisions=revisions))
 
 
-@pytest.mark.parametrize('text', ['这个登不上去', '不命中也算', '帮看看', '需要一份报名说明', '啥情况'])
-def test_permissive_local_filter_does_not_require_question_words(text):
-    assert candidate_reason(engine_context(text)['current'], ReplyConfig(ai_profile_id='fixture')) == ''
+@pytest.mark.parametrize('text', ['这个登不上去了', '帮看看这个', '需要一份报名说明', '啥情况'])
+def test_question_signal_is_required_by_default_but_can_be_turned_off(text):
+    permissive = ReplyConfig(ai_profile_id='fixture', local_require_question_signal=False)
+    assert candidate_reason(engine_context(text)['current'], permissive) == ''
+    expected = '' if re.search(QUESTION_PATTERN, text) else 'not_question'
+    assert candidate_reason(engine_context(text)['current'], ReplyConfig(ai_profile_id='fixture')) == expected
+
+
+@pytest.mark.parametrize('text,reason', [
+    ('我来三把', 'too_short'), ('额加了', 'too_short'), ('还在游戏内', 'too_short'),
+    ('@小明 ', 'addressed_other'), ('@阿花99 d', 'addressed_other'),
+    ('还有人排位吗', 'coordination'), ('所以你打吗', 'coordination'), ('你加我？', 'coordination'),
+    ('有没有人来五排', 'coordination'), ('守墓人前锋有点感觉', 'not_question'),
+    ('有人知道回响怎么拿吗', ''), ('默剧起飞的时候可以被打下来吗', ''), ('回响是什么', ''),
+    ('uu们想问下比赛导播多久关播', ''),
+])
+def test_local_rules_drop_obvious_chat_and_keep_real_questions(text, reason):
+    assert candidate_reason(engine_context(text)['current'], ReplyConfig(ai_profile_id='fixture')) == reason
 
 
 @pytest.mark.parametrize('text', ['？', '这？', '啥', '[发呆][发呆]', '……'])
@@ -103,8 +119,9 @@ def test_negative_decision_skips_planning_and_ask_bypasses_gate():
     decisions, model = Decisions(), Model()
     engine = ReplyEngine(model, SourceFixture(), decisions)
     config = ReplyConfig(ai_profile_id='fixture', decision_profile_ids=['decision'])
-    result = asyncio.run(engine.evaluate(engine_context('今天真开心'), config, model_revision=1))
-    assert result['reason'] == 'not_actionable' and model.calls == 0
+    # Passes the local rules (has a question word), so the decision model is what rejects it.
+    result = asyncio.run(engine.evaluate(engine_context('这个版本大家都玩得开心吗'), config, model_revision=1))
+    assert result['reason'] == 'not_actionable' and model.calls == 0 and decisions.calls == 1
     result = asyncio.run(engine.evaluate(engine_context('/ask 技能冷却是多少？'), config, model_revision=1))
     assert result['should_reply'] and decisions.calls == 1
 
